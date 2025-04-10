@@ -38,6 +38,16 @@ config.h
 *.webm
 *.avif
 *.mov
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.tiff
+*.bmp
+*.webp
+*.raw
+*.heic
+*.heif
 output.*
 
 # Répertoires de subprojects téléchargés automatiquement
