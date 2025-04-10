@@ -1,8 +1,10 @@
 [wrap-git]
 directory = libvmaf
 url = https://github.com/Netflix/vmaf.git
-revision = v3.0.0
+revision = v2.3.1
 depth = 1
+patch_directory = libvmaf-wrap
 
 [provide]
+dependency_names = vmaf
 libvmaf = vmaf_dep

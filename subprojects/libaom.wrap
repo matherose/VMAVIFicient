@@ -1,8 +1,12 @@
 [wrap-git]
 directory = libaom
 url = https://aomedia.googlesource.com/aom
-revision = n3.12.0
+revision = v3.9.0
 depth = 1
 
 [provide]
+dependency_names = aom
 aom = aom_dep
+
+[properties]
+main-wrap = libaom-wrap

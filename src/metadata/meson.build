@@ -3,6 +3,9 @@ metadata_sources = [
 ]
 
 metadata_deps = []
+if avcodec_dep.found()
+  metadata_deps += avcodec_dep
+endif
 if avutil_dep.found()
   metadata_deps += avutil_dep
 endif
@@ -20,7 +23,7 @@ metadata_lib = static_library('metadata',
   install: false
 )
 
-metadata_dep = declare_dependency(
+metadata_lib_dep = declare_dependency(
   link_with: metadata_lib,
   include_directories: include_directories('.')
 )

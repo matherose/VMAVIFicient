@@ -23,7 +23,7 @@ audio_lib = static_library('audio',
   install: false
 )
 
-audio_dep = declare_dependency(
+audio_lib_dep = declare_dependency(
   link_with: audio_lib,
   include_directories: include_directories('.')
 )

@@ -1,6 +1,3 @@
-Certainly! Below is an updated version of the README written in raw markdown for the **VMAVIFicient** project, focusing on using Meson build system with `wrap-git` for dependency management (instead of using submodules).
-
-```markdown
 # VMAVIFicient – AV1/AVIF Transcoder
 
 **VMAVIFicient** is a standalone AV1/AVIF transcoder written in C that converts videos to AV1 with Opus audio in MKV containers and images to AVIF (AV1 Image File Format). The project is designed to use the Meson build system for building and managing external library dependencies.

@@ -1,11 +1,16 @@
 [wrap-git]
 directory = FFmpeg
-url = https://git.ffmpeg.org/ffmpeg.git
-revision = release/7.1
+url = https://github.com/FFmpeg/FFmpeg.git
+revision = n7.1.0
 depth = 1
 
 [provide]
+dependency_names = libavformat, libavcodec, libavutil, libswscale, libswresample
 libavformat = avformat_dep
 libavcodec = avcodec_dep
 libavutil = avutil_dep
 libswscale = swscale_dep
+libswresample = swresample_dep
+
+[properties]
+main-wrap = ffmpeg-wrap

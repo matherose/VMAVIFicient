@@ -15,6 +15,9 @@ endif
 if swscale_dep.found()
   video_deps += swscale_dep
 endif
+if swresample_dep.found()
+  video_deps += swresample_dep
+endif
 if aom_dep.found()
   video_deps += aom_dep
 endif
@@ -26,7 +29,7 @@ video_lib = static_library('video',
   install: false
 )
 
-video_dep = declare_dependency(
+video_lib_dep = declare_dependency(
   link_with: video_lib,
   include_directories: include_directories('.')
 )

@@ -26,7 +26,7 @@ image_lib = static_library('image',
   install: false
 )
 
-image_dep = declare_dependency(
+image_lib_dep = declare_dependency(
   link_with: image_lib,
   include_directories: include_directories('.')
 )

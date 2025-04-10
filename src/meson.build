@@ -22,6 +22,8 @@ inc_dirs = include_directories(
 
 # Liste des dépendances disponibles
 project_deps = []
+
+# Ajouter les dépendances FFmpeg
 if avformat_dep.found()
   project_deps += avformat_dep
 endif
@@ -34,6 +36,11 @@ endif
 if swscale_dep.found()
   project_deps += swscale_dep
 endif
+if swresample_dep.found()
+  project_deps += swresample_dep
+endif
+
+# Autres bibliothèques externes
 if aom_dep.found()
   project_deps += aom_dep
 endif
@@ -48,11 +55,11 @@ if exif_dep.found()
 endif
 
 # Ajouter les dépendances internes des modules
-project_deps += audio_dep
-project_deps += video_dep
-project_deps += image_dep
-project_deps += metadata_dep
-project_deps += vmaf_dep
+project_deps += audio_lib_dep
+project_deps += video_lib_dep
+project_deps += image_lib_dep
+project_deps += metadata_lib_dep
+project_deps += vmaf_lib_dep
 
 # Exécutable principal
 executable('vmavificient',

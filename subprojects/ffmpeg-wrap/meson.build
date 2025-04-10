@@ -1,120 +1,74 @@
-project('FFmpeg-wrap', 'c',
-  version : '7.1.1',
-  license : 'LGPL-2.1+'
-)
+project('ffmpeg-wrap', 'c')
 
-# Chemins pour les bibliothèques et en-têtes compilés
-ffmpeg_source_dir = meson.current_source_dir() / '..' / 'FFmpeg'
-ffmpeg_build_dir = meson.current_build_dir() / 'ffmpeg_build'
-ffmpeg_prefix = ffmpeg_build_dir / 'install'
-ffmpeg_lib_dir = ffmpeg_prefix / 'lib'
-ffmpeg_inc_dir = ffmpeg_prefix / 'include'
+# Vérifier si nous devons compiler FFmpeg à partir des sources
+avcodec_dep = dependency('libavcodec', required : false)
+avutil_dep = dependency('libavutil', required : false)
+avformat_dep = dependency('libavformat', required : false)
+swscale_dep = dependency('libswscale', required : false)
+swresample_dep = dependency('libswresample', required : false)
 
-# Vérifier si FFmpeg a déjà été compilé
-is_built = run_command('test', '-d', ffmpeg_prefix, check: false).returncode() == 0
+# Liste des dépendances FFmpeg à vérifier
+deps_to_check = [
+  ['libavcodec', avcodec_dep], 
+  ['libavutil', avutil_dep],
+  ['libavformat', avformat_dep],
+  ['libswscale', swscale_dep],
+  ['libswresample', swresample_dep]
+]
 
-# Configurer et compiler FFmpeg si nécessaire
-if not is_built
-  message('Compilation de FFmpeg...')
+use_system_ffmpeg = true
+foreach dep : deps_to_check
+  if not dep[1].found()
+    use_system_ffmpeg = false
+    break
+  endif
+endforeach
+
+if not use_system_ffmpeg
+  message('Compilation de FFmpeg à partir des sources')
   
-  # Créer le répertoire de build
-  run_command('mkdir', '-p', ffmpeg_build_dir, check: false)
-  
-  # Arguments de configuration pour FFmpeg
-  ffmpeg_conf_args = [
-    '--prefix=' + ffmpeg_prefix,
-    '--enable-shared',
-    '--enable-pic',
-    '--enable-gpl',
-    '--enable-version3',
-    '--disable-doc',
-    '--disable-programs',
-    '--enable-avformat',
-    '--enable-avcodec',
-    '--enable-avutil',
-    '--enable-swscale',
-    '--enable-swresample',
-    '--disable-vaapi',
-    '--disable-vdpau',
-    '--disable-videotoolbox',
+  # Options de configuration
+  ffmpeg_options = [
+    '-Denable-shared=true',
+    '-Denable-static=false',
+    '-Ddisable-doc=true',
+    '-Ddisable-programs=true',
+    '-Denable-gpl=true',
+    '-Denable-version3=true',
   ]
   
-  # Exécuter le script configure de FFmpeg
-  configure_cmd = run_command('sh', '-c', 
-    'cd @0@ && ./configure @1@'.format(
-      ffmpeg_source_dir, ' '.join(ffmpeg_conf_args)
-    ), 
-    check: false
+  # Compilation du sous-projet
+  # Note: FFmpeg utilisera la commande configure directement avec ces options
+  # via un script d'intégration dans le wrapper
+  run_command('sh', '-c', 'cd ../FFmpeg && ./configure --enable-shared --disable-static --disable-doc --disable-programs --enable-gpl --enable-version3', check: true)
+  
+  # Créer des dépendances internes
+  avcodec_dep = declare_dependency(
+    dependencies: dependency('libavcodec', required: true, fallback: ['FFmpeg', 'avcodec_dep'])
   )
   
-  if configure_cmd.returncode() != 0
-    error('Échec de configuration de FFmpeg: ' + configure_cmd.stderr())
-  endif
-  
-  # Compiler FFmpeg
-  compile_cmd = run_command('sh', '-c', 
-    'cd @0@ && make -j@1@'.format(
-      ffmpeg_source_dir, 
-      host_machine.cpu_count()
-    ), 
-    check: false
+  avutil_dep = declare_dependency(
+    dependencies: dependency('libavutil', required: true, fallback: ['FFmpeg', 'avutil_dep'])
   )
   
-  if compile_cmd.returncode() != 0
-    error('Échec de compilation de FFmpeg: ' + compile_cmd.stderr())
-  endif
-  
-  # Installer FFmpeg dans le préfixe local
-  install_cmd = run_command('sh', '-c', 
-    'cd @0@ && make install'.format(ffmpeg_source_dir), 
-    check: false
+  avformat_dep = declare_dependency(
+    dependencies: dependency('libavformat', required: true, fallback: ['FFmpeg', 'avformat_dep'])
   )
   
-  if install_cmd.returncode() != 0
-    error('Échec d\'installation de FFmpeg: ' + install_cmd.stderr())
-  endif
+  swscale_dep = declare_dependency(
+    dependencies: dependency('libswscale', required: true, fallback: ['FFmpeg', 'swscale_dep'])
+  )
   
-  message('FFmpeg compilé avec succès')
+  swresample_dep = declare_dependency(
+    dependencies: dependency('libswresample', required: true, fallback: ['FFmpeg', 'swresample_dep'])
+  )
+else
+  message('Utilisation des bibliothèques système FFmpeg')
 endif
 
-# Créer des dépendances pour chaque bibliothèque FFmpeg
-compiler = meson.get_compiler('c')
-
-avformat_lib = compiler.find_library('avformat', dirs: [ffmpeg_lib_dir], required: true)
-avcodec_lib = compiler.find_library('avcodec', dirs: [ffmpeg_lib_dir], required: true)
-avutil_lib = compiler.find_library('avutil', dirs: [ffmpeg_lib_dir], required: true)
-swscale_lib = compiler.find_library('swscale', dirs: [ffmpeg_lib_dir], required: true)
-swresample_lib = compiler.find_library('swresample', dirs: [ffmpeg_lib_dir], required: true)
-
-# Créer et exporter les dépendances
-ffmpeg_inc = include_directories(ffmpeg_inc_dir)
-
-avformat_dep = declare_dependency(
-  include_directories: ffmpeg_inc,
-  dependencies: avformat_lib,
-  link_args: ['-L' + ffmpeg_lib_dir]
-)
-
-avcodec_dep = declare_dependency(
-  include_directories: ffmpeg_inc,
-  dependencies: avcodec_lib,
-  link_args: ['-L' + ffmpeg_lib_dir]
-)
-
-avutil_dep = declare_dependency(
-  include_directories: ffmpeg_inc,
-  dependencies: avutil_lib,
-  link_args: ['-L' + ffmpeg_lib_dir]
-)
-
-swscale_dep = declare_dependency(
-  include_directories: ffmpeg_inc,
-  dependencies: swscale_lib,
-  link_args: ['-L' + ffmpeg_lib_dir]
-)
-
-swresample_dep = declare_dependency(
-  include_directories: ffmpeg_inc,
-  dependencies: swresample_lib,
-  link_args: ['-L' + ffmpeg_lib_dir]
-)
+# Fournir les dépendances au projet principal
+meson.override_dependency('libavcodec', avcodec_dep)
+meson.override_dependency('libavutil', avutil_dep)
+meson.override_dependency('libavformat', avformat_dep)
+meson.override_dependency('libswscale', swscale_dep)
+meson.override_dependency('libswresample', swresample_dep)

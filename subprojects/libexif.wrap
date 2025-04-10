@@ -5,4 +5,8 @@ revision = v0.6.25
 depth = 1
 
 [provide]
-libexif = exif_dep
+dependency_names = exif
+exif = exif_dep
+
+[properties]
+main-wrap = libexif-wrap
