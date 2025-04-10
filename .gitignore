@@ -1,0 +1,50 @@
+# Répertoires de build
+builddir/
+build/
+
+# Fichiers objets et binaires
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+src/vmavificient
+
+# Répertoires et fichiers générés par les IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Fichiers de logs
+*.log
+
+# Fichiers générés par meson
+.mesonpy-native-file.ini
+meson-info/
+meson-logs/
+meson-private/
+
+# Fichiers générés par configuration
+config.h
+
+# Fichiers multimédias de test
+*.mkv
+*.mp4
+*.webm
+*.avif
+*.mov
+output.*
+
+# Répertoires de subprojects téléchargés automatiquement
+subprojects/packagecache/
+
+# On garde les fichiers .wrap mais pas les répertoires de subprojects clonés/générés
+# sauf les fichiers de configuration personnalisés
+subprojects/*
+!subprojects/*.wrap
+!subprojects/ffmpeg-wrap/

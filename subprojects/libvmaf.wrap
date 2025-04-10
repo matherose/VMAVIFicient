@@ -1,0 +1,8 @@
+[wrap-git]
+directory = libvmaf
+url = https://github.com/Netflix/vmaf.git
+revision = v3.0.0
+depth = 1
+
+[provide]
+libvmaf = vmaf_dep

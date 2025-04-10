@@ -1,0 +1,8 @@
+[wrap-git]
+directory = libexif
+url = https://github.com/libexif/libexif.git
+revision = v0.6.25
+depth = 1
+
+[provide]
+libexif = exif_dep
