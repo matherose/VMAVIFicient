@@ -1,118 +1,110 @@
 # VMAVIFicient – AV1/AVIF Transcoder
 
-**VMAVIFicient** is a standalone AV1/AVIF transcoder written in C that converts videos to AV1 with Opus audio in MKV containers and images to AVIF (AV1 Image File Format). The project is designed to use the Meson build system for building and managing external library dependencies.
+**VMAVIFicient** is a standalone AV1/AVIF transcoder written in C. It converts videos to AV1 with Opus audio in MKV containers and images to AVIF (AV1 Image File Format). This project is designed to use CMake with the Ninja build system for managing dependencies and building the project, ensuring that it never relies on system packages.
 
 ## Key Features
 
-- **Video Transcoding to AV1**: Utilizes AOMedia's AV1 codec for video encoding and Opus codec for audio, packaged in MKV containers.
-- **Image Conversion to AVIF**: Converts images (PNG, JPEG, etc.) to AVIF with high fidelity.
+- **Video Transcoding to AV1**: Utilizes AOMedia's AV1 codec for video encoding and Opus codec for audio, all packaged in MKV containers.
+- **Image Conversion to AVIF**: Converts images in formats like PNG and JPEG to AVIF with high fidelity.
 - **Quality Assurance with VMAF**: Optionally integrates Netflix's VMAF metric to assess video quality.
 - **Metadata Preservation**: Maintains image metadata during conversion using `libexif`.
-- **Logging & Reporting**: Logs details such as original vs. new file sizes, achieved size reduction, and encoding adjustments.
+- **Logging & Reporting**: Logs important details such as original vs. new file sizes, size reduction percentages, and encoding settings.
 
 ## Project Structure
 
 ```plaintext
 vmavificient/
-├── meson.build              # Top-level Meson build file
-├── src/                    
-│   ├── main.c              # CLI handling
-│   ├── video/              # Video transcoding
-│   │   ├── video.c         # Video source code
-│   │   └── video.h         # Header for video module
-│   ├── audio/              # Audio transcoding
-│   │   ├── audio.c         # Audio source code
-│   │   └── audio.h         # Header for audio module
-│   ├── image/              # Image conversion to AVIF
-│   │   ├── image.c         # Image source code
-│   │   └── image.h         # Header for image module
-│   ├── vmaf/               # VMAF integration
-│   │   ├── vmaf.c          # VMAF source code
-│   │   └── vmaf.h          # Header for VMAF module
-│   └── metadata/           # Metadata handling
-│       ├── metadata.c      # Metadata source code
-│       └── metadata.h      # Header for metadata module
-├── wrap/                   # Directory for Meson wrap files
-│   ├── FFmpeg.wrap         # Wrap file for FFmpeg
-│   ├── libaom.wrap         # Wrap file for AOMedia AV1 codec
-│   ├── libopus.wrap        # Wrap file for Opus codec
-│   ├── libvmaf.wrap        # Wrap file for VMAF library
-│   └── libexif.wrap        # Wrap file for libexif
-├── VERSION                 # Project version
-├── README.md               # Project documentation
-└── LICENSE                 # BSD 2-Clause License text
+├── CMakeLists.txt            # Top-level CMake file
+├── src/                      
+│   ├── main.c                # CLI handling
+│   ├── video/                # Video transcoding
+│   │   ├── CMakeLists.txt    # CMake file for the video module
+│   │   ├── video.c           # Video source code
+│   │   └── video.h           # Header for video module
+│   ├── audio/                # Audio transcoding
+│   │   ├── CMakeLists.txt    # CMake file for the audio module
+│   │   ├── audio.c           # Audio source code
+│   │   └── audio.h           # Header for audio module
+│   ├── image/                # Image conversion to AVIF
+│   │   ├── CMakeLists.txt    # CMake file for the image module
+│   │   ├── image.c           # Image source code
+│   │   └── image.h           # Header for image module
+│   ├── vmaf/                 # VMAF integration
+│   │   ├── CMakeLists.txt    # CMake file for the VMAF module
+│   │   ├── vmaf.c            # VMAF source code
+│   │   └── vmaf.h            # Header for VMAF module
+│   └── metadata/             # Metadata handling
+│       ├── CMakeLists.txt    # CMake file for the metadata module
+│       ├── metadata.c        # Metadata source code
+│       └── metadata.h        # Header for metadata module
+├── external/                 # External libraries (using CMake FetchContent)
+│   ├── FFmpeg/               # FFmpeg source
+│   ├── libaom/               # AOMedia AV1 codec source
+│   ├── libopus/              # Opus codec source
+│   ├── libvmaf/              # VMAF library source
+│   └── libexif/              # libexif source
+├── VERSION                   # Project version
+├── README.md                 # Project documentation
+└── LICENSE                   # BSD 2-Clause License text
 ```
 
-## Meson Build Configuration
+## CMake Configuration
 
-### Setting Up the Dependencies
+### Dependencies
 
-To manage dependencies, Meson uses `wrap-git`. You can create the following `.wrap` files in the `wrap/` directory for your required libraries:
+The project uses CMake's `FetchContent` module to download and build the required dependencies, ensuring that it remains fully standalone.
 
-- **FFmpeg.wrap**
-- **libaom.wrap**
-- **libopus.wrap**
-- **libvmaf.wrap**
-- **libexif.wrap**
-
-### Example Wrap File (libexif.wrap)
-
-Here’s an example of what your `libexif.wrap` could look like:
-
-```ini
-[wrap-git]
-directory = libexif
-url = git://git.savannah.nongnu.org/libexif.git
-revision = master
-```
-
-You can create similar wrap files for the other libraries.
-
-### Configuring and Building the Project
+### Building the Project
 
 To build the project, follow these steps:
 
 1. **Clone the repository**:
     ```bash
-    git clone <repository-url>
+    git clone --recurse-submodules <repository-url>
     cd vmavificient
     ```
 
 2. **Create a build directory**:
     ```bash
-    meson setup builddir
+    mkdir build
+    cd build
     ```
 
-3. **Build the project**:
+3. **Run CMake to configure the project**:
     ```bash
-    meson compile -C builddir
+    cmake -G Ninja ..
+    ```
+
+4. **Build the project**:
+    ```bash
+    ninja
     ```
 
 ## Usage
 
-Once built, you can use the `vmavificient` binary located in the build directory to transcode videos or convert images.
+After building, you can use the `vmavificient` executable located in the build directory to transcode videos or convert images.
 
 ### Transcode a Video
 
 ```bash
-./builddir/vmavificient input.mp4 output.mkv
+./vmavificient input.mp4 output.mkv
 ```
 
 ### Convert an Image
 
 ```bash
-./builddir/vmavificient photo.png photo.avif
+./vmavificient photo.png photo.avif
 ```
 
 ### Disable VMAF for Speed
 
 ```bash
-./builddir/vmavificient --no-vmaf input.mkv output.mkv
+./vmavificient --no-vmaf input.mkv output.mkv
 ```
 
 ## Logging and Results Interpretation
 
-The program logs details about the conversion, such as:
+The program logs details about the conversion process, including:
 
 ```
 Transcode complete: original size 50 MB, new size 30 MB (40% reduction).
@@ -120,17 +112,10 @@ Transcode complete: original size 50 MB, new size 30 MB (40% reduction).
 
 ## License
 
-This project is licensed under the BSD 2-Clause License managed by SPDX. See the `LICENSE` file for details.
-
-## Library versions
-- **FFmpeg**: n7.1.1
-- **libaom**: n3.12.0
-- **libopus**: n1.5.2
-- **libvmaf**: v3.0.0
-- **libexif**: v0.6.25
+This project is licensed under the BSD 2-Clause License. See the `LICENSE` file for details.
 
 ## Contribution
 
 Feel free to open issues or submit pull requests for enhancements or bug fixes.
 
-Thank you for your interest in **VMAVIFicient**! We hope you find it a useful tool for transcoding needs.
+Thank you for your interest in **VMAVIFicient**! We hope you find it a useful tool for your transcoding needs.
