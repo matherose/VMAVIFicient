@@ -54,7 +54,7 @@ runs:
     # registry snapshot refreshes on dep bumps; the old static key could
     # never refresh because actions/cache entries are immutable.
     - name: Cache cargo registry & git
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.cargo/registry
@@ -66,7 +66,7 @@ runs:
     # ExternalProject run git update in place, which can fail to unstash
     # local changes when a pinned ref moves.
     - name: Cache ExternalProject builds
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.deps-path }}
         key: ${{ inputs.deps-cache-key }}
@@ -78,7 +78,7 @@ runs:
     - name: Cache test media
       if: inputs.test-media == 'true'
       id: bbb-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: bbb.mp4.zip
         key: bbb-sunflower-1080p-30fps
