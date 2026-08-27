@@ -200,7 +200,7 @@ file(MAKE_DIRECTORY "${SVTAV1_INSTALL}/include/svt-av1")
 set(LIBHDR10PLUS_GIT_TAG "ec9613eb257bd92130a446e2ce155685a243bd1d") # libhdr10plus-2.1.5
 set(LIBHDR10PLUS_VERSION "2.1.5")
 set(SVTAV1_GIT_TAG       "8d13912d5e0e6b611e3d482d880b41a7f2e5cd52") # v4.1.0
-set(GRAV1SYNTH_GIT_REV   "7443e16dad97cc1f47fd7abcd0554e92978b935d")
+set(GRAV1SYNTH_GIT_REV   "1044228cd411672b565e5762a9b3597f4dd163b0")
 
 ExternalProject_Add(ep_svtav1
     GIT_REPOSITORY  https://github.com/juliobbv-p/svt-av1-hdr.git
@@ -401,11 +401,11 @@ else()
 
     set(FFMPEG_GIT_TAG    "38b88335f99e76ed89ff3c93f877fdefce736c13") # n8.1.2
     set(OPUS_GIT_TAG      "22244de5a79bd1d6d623c32e72bf1954b56235be") # v1.6.1
-    set(LIBDOVI_GIT_TAG   "4fd2b2235c9f93582dd4a00e65ee34a07800afd7") # libdovi-3.3.2
-    set(LIBDOVI_VERSION   "3.3.2")
+    set(LIBDOVI_GIT_TAG   "d1abe0e27ff2c7ab3339614d06db9f8a058af6b2") # libdovi-3.4.0
+    set(LIBDOVI_VERSION   "3.4.0")
     set(CJSON_GIT_TAG     "c859b25da02955fef659d658b8f324b5cde87be3") # v1.7.19
     set(ZLIB_GIT_TAG      "da607da739fa6047df13e66a2af6b8bec7c2a498") # v1.3.2
-    set(OPENSSL_GIT_TAG   "8cf17aaeb4599f8af87fefd810b5b5fee90fe69e") # openssl-3.5.7
+    set(OPENSSL_GIT_TAG   "f4dc4d58b48d346a8270183f89acf826d459b0ca") # openssl-3.5.8
     set(CURL_GIT_TAG      "68720b4837284335b2d63cb358f8f6ce65f5bc55") # curl-8_21_0
     set(LIBPNG_GIT_TAG    "3061454d980de7d53608f594194cfac722721d2a") # v1.6.58
     set(LIBJPEG_GIT_TAG   "c85e6b905bf237038faa936dab160ebfc5da0344") # 3.2.0
@@ -417,7 +417,7 @@ else()
     # legacy-gated headers and fail. Stay on 5.5.1 until fixed upstream.
     set(TESSERACT_GIT_TAG "3b7c70e34dea179549ed3e995872e2e019eb8477") # 5.5.1
     set(LIBVMAF_GIT_TAG   "3f9e02af258a5c0e30124fc585a3c3af90126dee") # v3.2.0
-    set(DAV1D_GIT_TAG     "b546257f770768b2c88258c533da38b91a06f737") # 1.5.3
+    set(DAV1D_GIT_TAG     "54706fc6bc0cdecab7e9593974a4039cc038fca7") # 1.5.4
 
     # ---- cJSON via FetchContent ----------------------------------------
     FetchContent_Declare(cjson
@@ -562,7 +562,7 @@ else()
 
     # ---- libpng --------------------------------------------------------
     ExternalProject_Add(ep_libpng
-        GIT_REPOSITORY  https://github.com/glennrp/libpng.git
+        GIT_REPOSITORY  https://github.com/pnggroup/libpng.git
         GIT_TAG         ${LIBPNG_GIT_TAG}
         GIT_SHALLOW     TRUE
         PREFIX          "${DEPS_PREFIX}/build/libpng"
