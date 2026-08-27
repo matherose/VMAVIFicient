@@ -343,6 +343,14 @@ if(VMAV_USE_SYSTEM_DEPS)
     # gets a single dependency to chase instead of six. Floors are the
     # FFmpeg 8.0 module majors (av_opt_set_array + buffersink
     # "pixel_formats" require ≥ 7.1; we standardize on 8+).
+    #
+    # These stay at the 8.x majors deliberately, even though the vendored
+    # build now pins FFmpeg 9. Our sources build clean against both: every
+    # libav* entry point we call still exists in 9, and none of the struct
+    # fields 9 dropped from AVCodec (pix_fmts, ch_layouts,
+    # supported_framerates, sample_fmts, supported_samplerates) is one we
+    # touch. Raising the floors to the 9.x majors would therefore lock out
+    # FFmpeg 8 hosts for no gain. Tested range is 8.1–9.0.
     pkg_check_modules(VMAV_LIBAV REQUIRED IMPORTED_TARGET
         libavformat>=62
         libavcodec>=62
@@ -399,7 +407,7 @@ else()
     file(MAKE_DIRECTORY "${VMAF_INSTALL}/include")
     file(MAKE_DIRECTORY "${DAV1D_INSTALL}/include")
 
-    set(FFMPEG_GIT_TAG    "38b88335f99e76ed89ff3c93f877fdefce736c13") # n8.1.2
+    set(FFMPEG_GIT_TAG    "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa") # n9.0.1
     set(OPUS_GIT_TAG      "22244de5a79bd1d6d623c32e72bf1954b56235be") # v1.6.1
     set(LIBDOVI_GIT_TAG   "d1abe0e27ff2c7ab3339614d06db9f8a058af6b2") # libdovi-3.4.0
     set(LIBDOVI_VERSION   "3.4.0")
