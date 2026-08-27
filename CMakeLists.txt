@@ -418,12 +418,22 @@ else()
     set(LIBPNG_GIT_TAG    "3061454d980de7d53608f594194cfac722721d2a") # v1.6.58
     set(LIBJPEG_GIT_TAG   "c85e6b905bf237038faa936dab160ebfc5da0344") # 3.2.0
     set(LIBTIFF_GIT_TAG   "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d") # v4.7.2
+    # Held at 1.86.0 on purpose — do not bump to 1.87.0. 1.87.0 exports a
+    # broken CMake package on macOS: LeptonicaTargets.cmake lists
+    # $<LINK_ONLY:ZLIB::ZLIB> and $<LINK_ONLY:JPEG::JPEG> in its link
+    # interface, but LeptonicaConfig.cmake never find_dependency()s either,
+    # so every consumer fails with "target ZLIB::ZLIB not found" — tesseract
+    # dies in check_leptonica_tiff_support's try_compile. 1.87.0 also
+    # misdetects our static libpng as a macOS framework (png.framework
+    # instead of libpng16.a). 1.86.0 exports plain .a paths and is fine.
     set(LEPTONICA_GIT_TAG "dbb48b0fd0e10e943ecd9bab7439701842894733") # 1.86.0
-    # 5.5.2's new cmake/SourceLists.cmake broke DISABLED_LEGACY_ENGINE:
-    # relative core paths vs absolute legacy paths make REMOVE_ITEM a
-    # no-op, so legacy sources (equationdetect.cpp) compile against
-    # legacy-gated headers and fail. Stay on 5.5.1 until fixed upstream.
-    set(TESSERACT_GIT_TAG "3b7c70e34dea179549ed3e995872e2e019eb8477") # 5.5.1
+    # 5.5.3 builds clean with DISABLED_LEGACY_ENGINE=ON (verified by trial
+    # build against leptonica 1.86.0 with this exact flag set). The previous
+    # note here blamed 5.5.2's cmake/SourceLists.cmake for making REMOVE_ITEM
+    # a no-op via a relative-vs-absolute path mismatch; that is not what the
+    # released tarballs contain — TESSERACT_SRC_CORE and TESSERACT_SRC_LEGACY
+    # both use identical relative paths, so REMOVE_ITEM does match.
+    set(TESSERACT_GIT_TAG "db0ec62f81b0737fbbe184d8fea40af5738f8eef") # 5.5.3
     set(LIBVMAF_GIT_TAG   "3f9e02af258a5c0e30124fc585a3c3af90126dee") # v3.2.0
     set(DAV1D_GIT_TAG     "54706fc6bc0cdecab7e9593974a4039cc038fca7") # 1.5.4
 
