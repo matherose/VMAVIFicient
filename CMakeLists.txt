@@ -242,29 +242,41 @@ ExternalProject_Add(ep_libhdr10plus
     LOG_OUTPUT_ON_FAILURE TRUE
 )
 
-# grav1synth's ffmpeg-sys-next build script reads PKG_CONFIG_PATH to find
-# FFmpeg. In vendored mode we point it at our local FFmpeg install; in
-# system mode we let it pick up the distro's pkg-config search path.
+# grav1synth builds its OWN FFmpeg, statically, via the ffmpeg_static feature.
+# It does not use ours and does not use the host's.
+#
+# Why it has to be this way. grav1synth is version-locked to FFmpeg 8.1
+# (ffmpeg-the-third 5.0.0+ffmpeg-8.1, held by its Cargo.lock under --locked);
+# against FFmpeg 9 headers it fails to compile, because AVCodec lost
+# pix_fmts / ch_layouts / supported_framerates. Steering it at an 8.x tree via
+# PKG_CONFIG_PATH does not work on Apple Silicon: ffmpeg-sys-the-third's
+# build.rs unconditionally *prepends* /opt/homebrew/lib/pkgconfig ahead of the
+# caller's PKG_CONFIG_PATH. Its guard is
+#     if !pc_path.contains("/opt/homebrew/lib/pkgconfig/")
+# and real pc_path entries carry no trailing slash, so the guard never holds
+# and the override always fires. Setting PKG_CONFIG to Homebrew's own binary
+# does not help for the same reason (verified both ways).
+#
+# So the only reliable route is to take pkg-config out of the picture: the
+# `build` feature makes ffmpeg-sys compile a private FFmpeg and skip probing
+# entirely. software-resampling is required alongside it — grav1synth requests
+# only `format`, but the private FFmpeg's opus decoder references swr_*, and
+# without swresample on the link line the binary fails to link.
+#
+# Upside beyond unbreaking the build: the helper no longer depends on host
+# FFmpeg at all, so our own FFmpeg pin is free to move independently of it.
 set(GRAV1SYNTH_BIN "${GRAV1SYNTH_INSTALL}/bin/grav1synth")
-if(NOT VMAV_USE_SYSTEM_DEPS)
-    set(_grav1_env_arg "PKG_CONFIG_PATH=${DEPS_PREFIX}/ffmpeg/lib/pkgconfig")
-else()
-    # `cmake -E env` with no KEY=VALUE is a no-op wrapper, which is what
-    # we want — propagate the calling shell's PKG_CONFIG_PATH unchanged.
-    set(_grav1_env_arg "")
-endif()
 ExternalProject_Add(ep_grav1synth
     DOWNLOAD_COMMAND  ""
     CONFIGURE_COMMAND ""
     BUILD_COMMAND     ""
     PREFIX            "${DEPS_PREFIX}/build/grav1synth"
     INSTALL_COMMAND
-        ${CMAKE_COMMAND} -E env
-            ${_grav1_env_arg}
         ${CARGO} install
             --git https://github.com/rust-av/grav1synth.git
             --rev ${GRAV1SYNTH_GIT_REV}
             --locked
+            --features ffmpeg_static,ffmpeg/software-resampling
             --root ${GRAV1SYNTH_INSTALL}
             grav1synth
     BUILD_BYPRODUCTS "${GRAV1SYNTH_BIN}"
