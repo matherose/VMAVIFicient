@@ -6,23 +6,24 @@
       "hidden": true,
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
       "name": "debug",
       "inherits": "base",
+      "binaryDir": "${sourceDir}/build-debug",
       "displayName": "Debug build with full warnings and sanitizers enabled",
       "description": "Debug build with -std=c11 -pedantic-errors and hardening flags per AGENTS.md § 8.2",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_FLAGS": "-std=c11 -pedantic-errors -Wall -Wextra -Werror -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wundef -Wconversion -Wsign-conversion -Wformat=2 -Wformat-security -Wnull-dereference -Wdouble-promotion -Wfloat-conversion -fno-common -fno-omit-frame-pointer -fstack-protector-strong -fstack-clash-protection -D_FORTIFY_SOURCE=3 -fno-strict-overflow"
+        "CMAKE_C_FLAGS": "-std=c11 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-command-line-argument -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wundef -Wconversion -Wsign-conversion -Wformat=2 -Wformat-security -Wnull-dereference -Wdouble-promotion -Wfloat-conversion -fno-common -fno-omit-frame-pointer -fstack-protector-strong -fstack-clash-protection -D_FORTIFY_SOURCE=3 -fno-strict-overflow"
       }
     },
     {
       "name": "asan",
       "inherits": "debug",
+      "binaryDir": "${sourceDir}/build-asan",
       "displayName": "ASan + UBSan build",
       "description": "AddressSanitizer + UndefinedBehaviorSanitizer build per AGENTS.md § 8.2",
       "cacheVariables": {
@@ -33,6 +34,7 @@
     {
       "name": "msan",
       "inherits": "debug",
+      "binaryDir": "${sourceDir}/build-msan",
       "displayName": "MSan build",
       "description": "MemorySanitizer build per AGENTS.md § 8.2 (mutually exclusive with ASan)",
       "cacheVariables": {
@@ -43,6 +45,7 @@
     {
       "name": "tsan",
       "inherits": "debug",
+      "binaryDir": "${sourceDir}/build-tsan",
       "displayName": "TSan build",
       "description": "ThreadSanitizer build per AGENTS.md § 8.2 (mutually exclusive with ASan/MSan)",
       "cacheVariables": {
@@ -53,6 +56,7 @@
     {
       "name": "coverage",
       "inherits": "debug",
+      "binaryDir": "${sourceDir}/build-coverage",
       "displayName": "Coverage build",
       "description": "Coverage instrumentation build per AGENTS.md § 8.2",
       "cacheVariables": {
@@ -62,11 +66,12 @@
     {
       "name": "release",
       "inherits": "base",
+      "binaryDir": "${sourceDir}/build",
       "displayName": "Release build",
       "description": "Release build with -O2 and optimizations per AGENTS.md § 8.2",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_FLAGS": "-std=c11 -pedantic-errors -Wall -Wextra -Werror -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fvisibility=hidden -flto"
+        "CMAKE_C_FLAGS": "-std=c11 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-command-line-argument -O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fvisibility=hidden -flto"
       }
     }
   ],

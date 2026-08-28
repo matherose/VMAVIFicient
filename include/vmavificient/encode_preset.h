@@ -64,7 +64,12 @@ static_assert(4 >= 0, "Noise adaptive filtering max valid");
 static_assert(2 >= 0, "Deblocking filter max valid");
 static_assert(30 >= 1, "CDEF scaling max >= min");
 static_assert(15 >= 0, "Chroma QM max valid");
-static_assert(8.0 >= 0, "QP scale compression max >= 0");
+/* The cast is load-bearing: static_assert needs an integer constant
+   expression, and C11 6.6p6 admits a floating constant only as the immediate
+   operand of a cast. Written as `8.0 >= 0` this compiles solely through
+   clang's -Wgnu-folding-constant extension and is rejected under
+   -pedantic-errors. */
+static_assert((int)8.0 >= 0, "QP scale compression max >= 0");
 static_assert(64 >= 32, "Max transform size valid");
 static_assert(2 >= 0, "HBD MDS max valid");
 static_assert(1 >= 0, "Overlays max valid");
