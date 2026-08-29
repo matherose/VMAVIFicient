@@ -94,12 +94,14 @@ done:
 }
 
 HdrInfo get_hdr_info(const char *path) {
-  HdrInfo info = {.error = 0,
-                  .has_dolby_vision = 0,
-                  .dv_profile = -1,
-                  .dv_level = -1,
-                  .has_hdr10 = 0,
-                  .has_hdr10plus = 0};
+  HdrInfo info = {
+      .error = 0,
+      .has_dolby_vision = 0,
+      .dv_profile = -1,
+      .dv_level = -1,
+      .has_hdr10 = 0,
+      .has_hdr10plus = 0,
+  };
   AVFormatContext *fmt_ctx = NULL;
   char errbuf[AV_ERROR_MAX_STRING_SIZE];
   int ret;
