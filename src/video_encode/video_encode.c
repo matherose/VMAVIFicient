@@ -21,6 +21,7 @@
 #include <libavformat/avformat.h>
 #include <libavutil/error.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/mem.h>
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 
@@ -180,6 +181,42 @@ static void apply_crop_offset(const AVFrame *frame, enum AVPixelFormat pix_fmt, 
   if (frame->data[2])
     src_data[2] = frame->data[2] + (crop_top >> v_shift) * frame->linesize[2] +
                   (crop_left >> h_shift) * desc->comp[2].step;
+}
+
+/**
+ * @brief Carry HDR10 static metadata from the source stream to the output.
+ *
+ * set_hdr10_metadata() hands the mastering display and content light values
+ * to SVT-AV1 so they land in the bitstream, but the muxer builds Matroska's
+ * Colour element from the *output* stream's coded side data. Copying only
+ * color_primaries/trc/space/range leaves that side data empty, so MaxCLL,
+ * MaxFALL and the mastering display luminance/primaries silently disappear
+ * from the remuxed file even though the source carried them.
+ */
+static void copy_hdr_static_metadata(AVStream *out_stream, const AVStream *in_stream) {
+  static const enum AVPacketSideDataType hdr_types[] = {
+      AV_PKT_DATA_MASTERING_DISPLAY_METADATA,
+      AV_PKT_DATA_CONTENT_LIGHT_LEVEL,
+  };
+  const AVCodecParameters *in_par = in_stream->codecpar;
+
+  for (size_t k = 0; k < sizeof(hdr_types) / sizeof(hdr_types[0]); k++) {
+    for (int i = 0; i < in_par->nb_coded_side_data; i++) {
+      if (in_par->coded_side_data[i].type != hdr_types[k])
+        continue;
+
+      /* av_packet_side_data_add() takes ownership on success, so hand it a
+         copy and free that copy ourselves if it refuses. */
+      uint8_t *copy = av_memdup(in_par->coded_side_data[i].data, in_par->coded_side_data[i].size);
+      if (!copy)
+        break;
+      if (!av_packet_side_data_add(&out_stream->codecpar->coded_side_data,
+                                   &out_stream->codecpar->nb_coded_side_data, hdr_types[k], copy,
+                                   in_par->coded_side_data[i].size, 0))
+        av_free(copy);
+      break;
+    }
+  }
 }
 
 /* ====================================================================== */
@@ -485,6 +522,7 @@ VideoEncodeResult encode_video(const VideoEncodeConfig *config) {
   out_stream->codecpar->color_trc = in_stream->codecpar->color_trc;
   out_stream->codecpar->color_space = in_stream->codecpar->color_space;
   out_stream->codecpar->color_range = in_stream->codecpar->color_range;
+  copy_hdr_static_metadata(out_stream, in_stream);
 
   /* Time base: use the encoder's frame rate */
   out_stream->time_base =
