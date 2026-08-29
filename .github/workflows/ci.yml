@@ -244,6 +244,14 @@ jobs:
             -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
             -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
 
+      # SVT-AV1-HDR and libhdr10plus stay vendored even in system mode, so
+      # EbSvtAv1*.h and libhdr10plus-rs/hdr10plus.h only exist once those
+      # ExternalProjects have been built. Analysing before that leaves the
+      # translation units malformed, and clang-tidy then reports a cascade
+      # of bogus findings on top of the missing-header errors.
+      - name: Build (materialise vendored headers)
+        run: cmake --build build --target ep_svtav1 ep_libhdr10plus -j"$(sysctl -n hw.ncpu)"
+
       # run-clang-tidy resolves the clang-tidy binary via $PATH, not
       # relative to itself, and brew keeps llvm/bin off PATH — pass it
       # explicitly or the wrapper dies with "failed to find clang-tidy".
