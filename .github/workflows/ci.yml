@@ -348,8 +348,10 @@ jobs:
           MEAN=$(grep -oE 'mean_volume: -?[0-9.]+' vol.txt | tail -1 | grep -oE '\-?[0-9.]+')
           echo "n_samples=$SAMPLES mean_volume=${MEAN} dB"
 
-          [ -n "$SAMPLES" ] && [ "$SAMPLES" -gt 0 ] \
-            || { echo "::error::output has no audio samples"; exit 1; }
+          if [ -z "$SAMPLES" ] || [ "$SAMPLES" -eq 0 ]; then
+            echo "::error::output has no audio samples"
+            exit 1
+          fi
           # A digitally silent track reports -91 dB or lower.
           SILENT=$(awk -v m="$MEAN" 'BEGIN { print (m <= -90) ? 1 : 0 }')
           [ "$SILENT" = "0" ] || { echo "::error::audio track is silent ($MEAN dB)"; exit 1; }
