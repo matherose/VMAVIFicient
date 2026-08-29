@@ -9,14 +9,18 @@ inputs:
   mode:
     description: >
       "system" = Homebrew shared deps (+ llvm for clang-tidy);
-      "vendored" = minimal brew, deps built by ExternalProject.
+      "vendored" = minimal brew, deps built by ExternalProject;
+      "media" = ffmpeg and the test clip only, for jobs that consume a
+      prebuilt dist/ artifact and never compile anything.
     required: true
   deps-path:
     description: Path of the ExternalProject deps tree to cache (e.g. build/deps)
-    required: true
+    required: false
+    default: ''
   deps-cache-key:
     description: Exact cache key for the deps tree
-    required: true
+    required: false
+    default: ''
   test-media:
     description: Also fetch Big Buck Bunny and cut sample.mp4
     required: false
@@ -53,9 +57,18 @@ runs:
       shell: bash
       run: brew install ninja pkg-config nasm meson ffmpeg
 
+    # A vendored dist/ links nothing outside the macOS system libraries, so
+    # jobs that only run it need ffmpeg for probing and cutting the clip —
+    # no toolchain, no Rust, no dependency tree.
+    - name: Install brew packages (media only)
+      if: inputs.mode == 'media'
+      shell: bash
+      run: brew install ffmpeg
+
     # Pinned to a commit on the "stable" branch; the toolchain input
     # replaces what the mutable @stable ref used to select.
     - name: Install Rust toolchain
+      if: inputs.mode != 'media'
       uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, 2026-07-11
       with:
         toolchain: stable
@@ -64,6 +77,7 @@ runs:
     # registry snapshot refreshes on dep bumps; the old static key could
     # never refresh because actions/cache entries are immutable.
     - name: Cache cargo registry & git
+      if: inputs.mode != 'media'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
@@ -76,12 +90,14 @@ runs:
     # ExternalProject run git update in place, which can fail to unstash
     # local changes when a pinned ref moves.
     - name: Cache ExternalProject builds
+      if: inputs.mode != 'media' && inputs.deps-path != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.deps-path }}
         key: ${{ inputs.deps-cache-key }}
 
     - name: Install cargo-c
+      if: inputs.mode != 'media'
       shell: bash
       run: cargo install cargo-c
 
