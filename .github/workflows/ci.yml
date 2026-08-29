@@ -90,7 +90,7 @@ jobs:
       # explicitly or the wrapper dies with "failed to find clang-tidy".
       - name: Run clang-tidy
         run: |
-          LLVM="$(brew --prefix llvm)"
+          LLVM="$(brew --prefix llvm@22)"
           "$LLVM/bin/run-clang-tidy" \
             -clang-tidy-binary "$LLVM/bin/clang-tidy" \
             -p build -quiet \
