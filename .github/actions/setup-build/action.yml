@@ -29,14 +29,24 @@ runs:
       shell: bash
       run: brew update
 
+    # llvm is pinned to a major. The unversioned `llvm` formula rolls
+    # forward, and .clang-tidy selects checks by wildcard (bugprone-*,
+    # readability-*, ...) with WarningsAsErrors '*', so every new check an
+    # LLVM release adds becomes an instant CI failure on code that did not
+    # change. llvm 23.1.0 did exactly that, adding bugprone-signed-bitwise,
+    # readability-trailing-comma and readability-redundant-nested-if.
+    # Bump this deliberately, together with whatever findings it surfaces.
     - name: Install brew packages (system mode)
       if: inputs.mode == 'system'
       shell: bash
       run: |
         brew install \
-          ninja pkg-config nasm meson llvm \
+          ninja pkg-config nasm meson llvm@22 \
           ffmpeg opus dovi_tool tesseract leptonica libvmaf \
           jpeg-turbo libpng libtiff cjson openssl@3
+        # CMakeLists.txt takes ENV LLVM_PREFIX as a find_program hint, so
+        # the pinned toolchain is used for compiling too, not just linting.
+        echo "LLVM_PREFIX=$(brew --prefix llvm@22)/bin" >> "$GITHUB_ENV"
 
     - name: Install brew packages (vendored mode)
       if: inputs.mode == 'vendored'
@@ -54,7 +64,7 @@ runs:
     # registry snapshot refreshes on dep bumps; the old static key could
     # never refresh because actions/cache entries are immutable.
     - name: Cache cargo registry & git
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/.cargo/registry
@@ -66,7 +76,7 @@ runs:
     # ExternalProject run git update in place, which can fail to unstash
     # local changes when a pinned ref moves.
     - name: Cache ExternalProject builds
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.deps-path }}
         key: ${{ inputs.deps-cache-key }}
@@ -78,7 +88,7 @@ runs:
     - name: Cache test media
       if: inputs.test-media == 'true'
       id: bbb-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: bbb.mp4.zip
         key: bbb-sunflower-1080p-30fps

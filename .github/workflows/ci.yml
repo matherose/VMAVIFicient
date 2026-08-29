@@ -23,7 +23,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Pin to a specific clang-format version. The unversioned package
       # tracks the distro default and shifts under our feet when the
@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 90
     needs: lint
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-build
         with:
@@ -90,7 +90,7 @@ jobs:
       # explicitly or the wrapper dies with "failed to find clang-tidy".
       - name: Run clang-tidy
         run: |
-          LLVM="$(brew --prefix llvm)"
+          LLVM="$(brew --prefix llvm@22)"
           "$LLVM/bin/run-clang-tidy" \
             -clang-tidy-binary "$LLVM/bin/clang-tidy" \
             -p build -quiet \
@@ -122,7 +122,7 @@ jobs:
     timeout-minutes: 120
     needs: lint
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-build
         with:

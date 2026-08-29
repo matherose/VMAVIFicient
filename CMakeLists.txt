@@ -200,7 +200,7 @@ file(MAKE_DIRECTORY "${SVTAV1_INSTALL}/include/svt-av1")
 set(LIBHDR10PLUS_GIT_TAG "ec9613eb257bd92130a446e2ce155685a243bd1d") # libhdr10plus-2.1.5
 set(LIBHDR10PLUS_VERSION "2.1.5")
 set(SVTAV1_GIT_TAG       "8d13912d5e0e6b611e3d482d880b41a7f2e5cd52") # v4.1.0
-set(GRAV1SYNTH_GIT_REV   "7443e16dad97cc1f47fd7abcd0554e92978b935d")
+set(GRAV1SYNTH_GIT_REV   "1044228cd411672b565e5762a9b3597f4dd163b0")
 
 ExternalProject_Add(ep_svtav1
     GIT_REPOSITORY  https://github.com/juliobbv-p/svt-av1-hdr.git
@@ -242,29 +242,41 @@ ExternalProject_Add(ep_libhdr10plus
     LOG_OUTPUT_ON_FAILURE TRUE
 )
 
-# grav1synth's ffmpeg-sys-next build script reads PKG_CONFIG_PATH to find
-# FFmpeg. In vendored mode we point it at our local FFmpeg install; in
-# system mode we let it pick up the distro's pkg-config search path.
+# grav1synth builds its OWN FFmpeg, statically, via the ffmpeg_static feature.
+# It does not use ours and does not use the host's.
+#
+# Why it has to be this way. grav1synth is version-locked to FFmpeg 8.1
+# (ffmpeg-the-third 5.0.0+ffmpeg-8.1, held by its Cargo.lock under --locked);
+# against FFmpeg 9 headers it fails to compile, because AVCodec lost
+# pix_fmts / ch_layouts / supported_framerates. Steering it at an 8.x tree via
+# PKG_CONFIG_PATH does not work on Apple Silicon: ffmpeg-sys-the-third's
+# build.rs unconditionally *prepends* /opt/homebrew/lib/pkgconfig ahead of the
+# caller's PKG_CONFIG_PATH. Its guard is
+#     if !pc_path.contains("/opt/homebrew/lib/pkgconfig/")
+# and real pc_path entries carry no trailing slash, so the guard never holds
+# and the override always fires. Setting PKG_CONFIG to Homebrew's own binary
+# does not help for the same reason (verified both ways).
+#
+# So the only reliable route is to take pkg-config out of the picture: the
+# `build` feature makes ffmpeg-sys compile a private FFmpeg and skip probing
+# entirely. software-resampling is required alongside it — grav1synth requests
+# only `format`, but the private FFmpeg's opus decoder references swr_*, and
+# without swresample on the link line the binary fails to link.
+#
+# Upside beyond unbreaking the build: the helper no longer depends on host
+# FFmpeg at all, so our own FFmpeg pin is free to move independently of it.
 set(GRAV1SYNTH_BIN "${GRAV1SYNTH_INSTALL}/bin/grav1synth")
-if(NOT VMAV_USE_SYSTEM_DEPS)
-    set(_grav1_env_arg "PKG_CONFIG_PATH=${DEPS_PREFIX}/ffmpeg/lib/pkgconfig")
-else()
-    # `cmake -E env` with no KEY=VALUE is a no-op wrapper, which is what
-    # we want — propagate the calling shell's PKG_CONFIG_PATH unchanged.
-    set(_grav1_env_arg "")
-endif()
 ExternalProject_Add(ep_grav1synth
     DOWNLOAD_COMMAND  ""
     CONFIGURE_COMMAND ""
     BUILD_COMMAND     ""
     PREFIX            "${DEPS_PREFIX}/build/grav1synth"
     INSTALL_COMMAND
-        ${CMAKE_COMMAND} -E env
-            ${_grav1_env_arg}
         ${CARGO} install
             --git https://github.com/rust-av/grav1synth.git
             --rev ${GRAV1SYNTH_GIT_REV}
             --locked
+            --features ffmpeg_static,ffmpeg/software-resampling
             --root ${GRAV1SYNTH_INSTALL}
             grav1synth
     BUILD_BYPRODUCTS "${GRAV1SYNTH_BIN}"
@@ -331,6 +343,14 @@ if(VMAV_USE_SYSTEM_DEPS)
     # gets a single dependency to chase instead of six. Floors are the
     # FFmpeg 8.0 module majors (av_opt_set_array + buffersink
     # "pixel_formats" require ≥ 7.1; we standardize on 8+).
+    #
+    # These stay at the 8.x majors deliberately, even though the vendored
+    # build now pins FFmpeg 9. Our sources build clean against both: every
+    # libav* entry point we call still exists in 9, and none of the struct
+    # fields 9 dropped from AVCodec (pix_fmts, ch_layouts,
+    # supported_framerates, sample_fmts, supported_samplerates) is one we
+    # touch. Raising the floors to the 9.x majors would therefore lock out
+    # FFmpeg 8 hosts for no gain. Tested range is 8.1–9.0.
     pkg_check_modules(VMAV_LIBAV REQUIRED IMPORTED_TARGET
         libavformat>=62
         libavcodec>=62
@@ -387,25 +407,35 @@ else()
     file(MAKE_DIRECTORY "${VMAF_INSTALL}/include")
     file(MAKE_DIRECTORY "${DAV1D_INSTALL}/include")
 
-    set(FFMPEG_GIT_TAG    "38b88335f99e76ed89ff3c93f877fdefce736c13") # n8.1.2
+    set(FFMPEG_GIT_TAG    "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa") # n9.0.1
     set(OPUS_GIT_TAG      "22244de5a79bd1d6d623c32e72bf1954b56235be") # v1.6.1
-    set(LIBDOVI_GIT_TAG   "4fd2b2235c9f93582dd4a00e65ee34a07800afd7") # libdovi-3.3.2
-    set(LIBDOVI_VERSION   "3.3.2")
+    set(LIBDOVI_GIT_TAG   "d1abe0e27ff2c7ab3339614d06db9f8a058af6b2") # libdovi-3.4.0
+    set(LIBDOVI_VERSION   "3.4.0")
     set(CJSON_GIT_TAG     "c859b25da02955fef659d658b8f324b5cde87be3") # v1.7.19
     set(ZLIB_GIT_TAG      "da607da739fa6047df13e66a2af6b8bec7c2a498") # v1.3.2
-    set(OPENSSL_GIT_TAG   "8cf17aaeb4599f8af87fefd810b5b5fee90fe69e") # openssl-3.5.7
+    set(OPENSSL_GIT_TAG   "f4dc4d58b48d346a8270183f89acf826d459b0ca") # openssl-3.5.8
     set(CURL_GIT_TAG      "68720b4837284335b2d63cb358f8f6ce65f5bc55") # curl-8_21_0
     set(LIBPNG_GIT_TAG    "3061454d980de7d53608f594194cfac722721d2a") # v1.6.58
     set(LIBJPEG_GIT_TAG   "c85e6b905bf237038faa936dab160ebfc5da0344") # 3.2.0
     set(LIBTIFF_GIT_TAG   "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d") # v4.7.2
+    # Held at 1.86.0 on purpose — do not bump to 1.87.0. 1.87.0 exports a
+    # broken CMake package on macOS: LeptonicaTargets.cmake lists
+    # $<LINK_ONLY:ZLIB::ZLIB> and $<LINK_ONLY:JPEG::JPEG> in its link
+    # interface, but LeptonicaConfig.cmake never find_dependency()s either,
+    # so every consumer fails with "target ZLIB::ZLIB not found" — tesseract
+    # dies in check_leptonica_tiff_support's try_compile. 1.87.0 also
+    # misdetects our static libpng as a macOS framework (png.framework
+    # instead of libpng16.a). 1.86.0 exports plain .a paths and is fine.
     set(LEPTONICA_GIT_TAG "dbb48b0fd0e10e943ecd9bab7439701842894733") # 1.86.0
-    # 5.5.2's new cmake/SourceLists.cmake broke DISABLED_LEGACY_ENGINE:
-    # relative core paths vs absolute legacy paths make REMOVE_ITEM a
-    # no-op, so legacy sources (equationdetect.cpp) compile against
-    # legacy-gated headers and fail. Stay on 5.5.1 until fixed upstream.
-    set(TESSERACT_GIT_TAG "3b7c70e34dea179549ed3e995872e2e019eb8477") # 5.5.1
+    # 5.5.3 builds clean with DISABLED_LEGACY_ENGINE=ON (verified by trial
+    # build against leptonica 1.86.0 with this exact flag set). The previous
+    # note here blamed 5.5.2's cmake/SourceLists.cmake for making REMOVE_ITEM
+    # a no-op via a relative-vs-absolute path mismatch; that is not what the
+    # released tarballs contain — TESSERACT_SRC_CORE and TESSERACT_SRC_LEGACY
+    # both use identical relative paths, so REMOVE_ITEM does match.
+    set(TESSERACT_GIT_TAG "db0ec62f81b0737fbbe184d8fea40af5738f8eef") # 5.5.3
     set(LIBVMAF_GIT_TAG   "3f9e02af258a5c0e30124fc585a3c3af90126dee") # v3.2.0
-    set(DAV1D_GIT_TAG     "b546257f770768b2c88258c533da38b91a06f737") # 1.5.3
+    set(DAV1D_GIT_TAG     "54706fc6bc0cdecab7e9593974a4039cc038fca7") # 1.5.4
 
     # ---- cJSON via FetchContent ----------------------------------------
     FetchContent_Declare(cjson
@@ -550,7 +580,7 @@ else()
 
     # ---- libpng --------------------------------------------------------
     ExternalProject_Add(ep_libpng
-        GIT_REPOSITORY  https://github.com/glennrp/libpng.git
+        GIT_REPOSITORY  https://github.com/pnggroup/libpng.git
         GIT_TAG         ${LIBPNG_GIT_TAG}
         GIT_SHALLOW     TRUE
         PREFIX          "${DEPS_PREFIX}/build/libpng"
