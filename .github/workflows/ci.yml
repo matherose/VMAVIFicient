@@ -153,9 +153,13 @@ jobs:
       - name: Build
         run: cmake --build build -j"$(sysctl -n hw.ncpu)"
 
+      # --component so only our two binaries are installed. A plain install
+      # would also run cJSON's rules, which write to an absolute prefix
+      # baked in at configure time and fail on /usr/local.
       - name: Install to prefix
         run: |
-          cmake --install build --prefix "$GITHUB_WORKSPACE/dist"
+          cmake --install build --prefix "$GITHUB_WORKSPACE/dist" \
+            --component vmavificient
           cp build/vmav_tests "$GITHUB_WORKSPACE/dist/bin/"
           chmod +x "$GITHUB_WORKSPACE/dist/bin/"*
 
@@ -211,29 +215,33 @@ jobs:
 
   # ── Stage 4b: static analysis ──────────────────────────────────────
   # Zero-findings policy (.clang-tidy, WarningsAsErrors) enforced over the
-  # whole tree — pre-commit only checks changed files. Needs a configured
-  # tree for compile_commands.json, so it takes the dependency cache
-  # rather than the dist artifact.
+  # whole tree — pre-commit only checks changed files.
+  #
+  # System mode, not vendored: llvm@22 (which provides run-clang-tidy) is
+  # only in the system brew list, and analysing the same compile database
+  # the tool has always seen avoids a needless change in what gets
+  # reported. Only needs a configure, so it hangs off lint and runs in
+  # parallel with the vendored chain rather than waiting on deps.
   clang-tidy:
     name: 4b · clang-tidy (full tree)
     runs-on: macos-14
     timeout-minutes: 60
-    needs: deps
+    needs: lint
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-build
         with:
-          mode: vendored
+          mode: system
           deps-path: build/deps
-          deps-cache-key: cmake-deps-vendored-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
+          deps-cache-key: cmake-deps-tidy-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure (compile commands)
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DVMAV_USE_SYSTEM_DEPS=OFF \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
             -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
 
       # run-clang-tidy resolves the clang-tidy binary via $PATH, not
