@@ -435,8 +435,10 @@ done:
 
 static int spawn_grav1synth(const char *src, const char *denoised, const char *table_out) {
   /* grav1synth diff <src> <denoised> -o <table_out> */
-  char *argv[] = {(char *)VMAV_GRAV1SYNTH_BIN, "diff", (char *)src, (char *)denoised, "-o",
-                  (char *)table_out,           NULL};
+  char *argv[] = {
+      (char *)VMAV_GRAV1SYNTH_BIN, "diff", (char *)src, (char *)denoised, "-o",
+      (char *)table_out,           NULL,
+  };
   pid_t pid;
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);

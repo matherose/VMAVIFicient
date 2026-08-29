@@ -34,6 +34,6 @@ void vmav_cmd_init(VmavCommand *c);
 void vmav_cmd_arg(VmavCommand *c, const char *arg);
 
 /** @brief Append a printf-formatted argument to the command's argv. */
-void vmav_cmd_argf(VmavCommand *c, const char *fmt, ...);
+void vmav_cmd_argf(VmavCommand *c, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 #endif /* VMAVIFICIENT_PROC_H */

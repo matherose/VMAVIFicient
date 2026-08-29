@@ -31,9 +31,11 @@ static const struct {
   const char *code;
 } lang_map[] = {
     /* French */
-    {"fran\xc3\xa7"
-     "ais",
-     "fre"}, /* français (UTF-8) */
+    {
+        "fran\xc3\xa7"
+        "ais",
+        "fre",
+    }, /* français (UTF-8) */
     {"francais", "fre"},
     {"french", "fre"},
     /* English */
@@ -44,9 +46,11 @@ static const struct {
     {"german", "ger"},
     {"allemand", "ger"},
     /* Spanish */
-    {"espa\xc3\xb1"
-     "ol",
-     "spa"}, /* español (UTF-8) */
+    {
+        "espa\xc3\xb1"
+        "ol",
+        "spa",
+    }, /* español (UTF-8) */
     {"espanol", "spa"},
     {"spanish", "spa"},
     {"castillan", "spa"},
@@ -55,9 +59,11 @@ static const struct {
     {"italian", "ita"},
     {"italien", "ita"},
     /* Portuguese */
-    {"portugu\xc3\xaa"
-     "s",
-     "por"}, /* português (UTF-8) */
+    {
+        "portugu\xc3\xaa"
+        "s",
+        "por",
+    }, /* português (UTF-8) */
     {"portugues", "por"},
     {"portuguese", "por"},
     /* Dutch */
@@ -182,7 +188,7 @@ static void fill_track(TrackInfo *t, AVStream *stream) {
 
   t->channels = stream->codecpar->ch_layout.nb_channels;
   t->bitrate = stream->codecpar->bit_rate;
-  t->codec_id = stream->codecpar->codec_id;
+  t->codec_id = (int)stream->codecpar->codec_id;
   t->profile = stream->codecpar->profile;
 
   /* Forced: check disposition flag first, then title keywords. */
@@ -238,7 +244,7 @@ MediaTracks get_media_tracks(const char *path) {
   }
 
   if (n_audio > 0) {
-    result.audio = calloc(n_audio, sizeof(TrackInfo));
+    result.audio = calloc((size_t)n_audio, sizeof(TrackInfo));
     if (!result.audio) {
       result.error = AVERROR(ENOMEM);
       avformat_close_input(&fmt_ctx);
@@ -247,7 +253,7 @@ MediaTracks get_media_tracks(const char *path) {
   }
 
   if (n_sub > 0) {
-    result.subtitles = calloc(n_sub, sizeof(TrackInfo));
+    result.subtitles = calloc((size_t)n_sub, sizeof(TrackInfo));
     if (!result.subtitles) {
       free(result.audio);
       result.audio = NULL;
@@ -332,10 +338,16 @@ static const char *language_display_name(const char *code) {
     const char *name;
   } names[] = {
       {"eng", "English"},
-      {"fre", "Fran\xc3\xa7"
-              "ais"},
-      {"fra", "Fran\xc3\xa7"
-              "ais"},
+      {
+          "fre",
+          "Fran\xc3\xa7"
+          "ais",
+      },
+      {
+          "fra",
+          "Fran\xc3\xa7"
+          "ais",
+      },
       {"ger", "German"},
       {"deu", "German"},
       {"spa", "Spanish"},
@@ -519,7 +531,7 @@ TrackInfo *select_best_audio_per_language(const MediaTracks *tracks, int split_f
   if (!tracks || tracks->audio_count == 0)
     return NULL;
 
-  TrackInfo *best = calloc(tracks->audio_count, sizeof(TrackInfo));
+  TrackInfo *best = calloc((size_t)tracks->audio_count, sizeof(TrackInfo));
   if (!best)
     return NULL;
 

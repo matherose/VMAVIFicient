@@ -124,10 +124,8 @@ void apply_preset_to_config(EbSvtAv1EncConfiguration *cfg, const EncodePreset *p
     cfg->key_frame_chroma_qindex_offset = (int32_t)p->key_frame_chroma_qindex_offset;
   }
 
-  if (crf <= 0) {
-    if (p->vbr_max_section_pct > 0)
-      cfg->vbr_max_section_pct = (uint32_t)p->vbr_max_section_pct;
-  }
+  if (crf <= 0 && p->vbr_max_section_pct > 0)
+    cfg->vbr_max_section_pct = (uint32_t)p->vbr_max_section_pct;
 
   if (crf > 0) {
     if (p->startup_mg_size > 0)

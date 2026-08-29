@@ -47,8 +47,9 @@
 /* Silence the SVT-AV1 banner spam during probe trials unless --verbose.
  * Each trial calls svt_av1_enc_init_handle which re-emits the banner; with
  * 4 trials × 3 samples that's a lot of noise. */
-static void svt_probe_log_callback(void *ctx, SvtAv1LogLevel level, const char *tag,
-                                   const char *fmt, va_list args) {
+__attribute__((format(printf, 4, 0))) static void
+svt_probe_log_callback(void *ctx, SvtAv1LogLevel level, const char *tag, const char *fmt,
+                       va_list args) {
   (void)ctx;
   (void)level;
   (void)tag;
@@ -973,7 +974,11 @@ static int search_with_n_samples(const char *input_path, const EncodePreset *p, 
 CrfSearchResult run_crf_search(const char *input_path, int vmaf_target, const EncodePreset *preset,
                                int film_grain, const char *vfilter) {
   CrfSearchResult result = {
-      .crf = -1, .vmaf_target = vmaf_target, .vmaf_result = 0.0, .error = NULL};
+      .crf = -1,
+      .vmaf_target = vmaf_target,
+      .vmaf_result = 0.0,
+      .error = NULL,
+  };
   svt_av1_set_log_callback(svt_probe_log_callback, NULL);
 
   Source src = {0};

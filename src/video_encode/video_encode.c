@@ -43,8 +43,10 @@
 /* output (rate control decisions, GOP layout, warnings, etc.).         */
 /* ====================================================================== */
 
-static void svt_log_callback(void *context, SvtAv1LogLevel level, const char *tag, const char *fmt,
-                             va_list args) {
+__attribute__((format(printf, 4, 0))) static void svt_log_callback(void *context,
+                                                                   SvtAv1LogLevel level,
+                                                                   const char *tag, const char *fmt,
+                                                                   va_list args) {
   (void)context;
   /* SVT-AV1 levels: 0=fatal, 1=error, 2=warn, 3=info, 4=debug. Fatal,
      error, and warn always reach stderr — suppressing them behind
@@ -152,7 +154,7 @@ static size_t rpu_reader_next(RpuReader *r, uint8_t **out_data) {
 /** Format the per-update middle string for the video progress bar. */
 static void fmt_video_middle(char *out, size_t cap, int64_t frames_done, time_t start_time) {
   double elapsed = difftime(time(NULL), start_time);
-  double fps = (elapsed > 0.5) ? frames_done / elapsed : 0;
+  double fps = (elapsed > 0.5) ? (double)frames_done / elapsed : 0;
   snprintf(out, cap, "%lld frames  %.1f fps", (long long)frames_done, fps);
 }
 
@@ -668,8 +670,10 @@ VideoEncodeResult encode_video(const VideoEncodeConfig *config) {
               out_av_pkt->flags |= AV_PKT_FLAG_KEY;
 
             /* Rescale timestamps */
-            AVRational svt_tb = {(int)svt_config.frame_rate_denominator,
-                                 (int)svt_config.frame_rate_numerator};
+            AVRational svt_tb = {
+                (int)svt_config.frame_rate_denominator,
+                (int)svt_config.frame_rate_numerator,
+            };
             av_packet_rescale_ts(out_av_pkt, svt_tb, out_stream->time_base);
 
             av_interleaved_write_frame(ofmt_ctx, out_av_pkt);
@@ -809,8 +813,10 @@ flush_encoder:
               out_pkt->pic_type == EB_AV1_INTRA_ONLY_PICTURE)
             out_av_pkt->flags |= AV_PKT_FLAG_KEY;
 
-          AVRational svt_tb = {(int)svt_config.frame_rate_denominator,
-                               (int)svt_config.frame_rate_numerator};
+          AVRational svt_tb = {
+              (int)svt_config.frame_rate_denominator,
+              (int)svt_config.frame_rate_numerator,
+          };
           av_packet_rescale_ts(out_av_pkt, svt_tb, out_stream->time_base);
 
           av_interleaved_write_frame(ofmt_ctx, out_av_pkt);

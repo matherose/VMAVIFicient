@@ -143,14 +143,12 @@ StageStatus stage_probe(PipelineCtx *ctx) {
         continue;
       const char *lang = sub->language[0] ? sub->language : "und";
 
-      if (is_text_subtitle(sub)) {
-        if (srt_seen_count < 64) {
-          snprintf(srt_seen_lang[srt_seen_count], sizeof(srt_seen_lang[0]), "%s", lang);
-          srt_seen_variant[srt_seen_count] = detect_track_french_variant(sub);
-          srt_seen_forced[srt_seen_count] = sub->is_forced;
-          srt_seen_sdh[srt_seen_count] = sub->is_sdh;
-          srt_seen_count++;
-        }
+      if (is_text_subtitle(sub) && srt_seen_count < 64) {
+        snprintf(srt_seen_lang[srt_seen_count], sizeof(srt_seen_lang[0]), "%s", lang);
+        srt_seen_variant[srt_seen_count] = detect_track_french_variant(sub);
+        srt_seen_forced[srt_seen_count] = sub->is_forced;
+        srt_seen_sdh[srt_seen_count] = sub->is_sdh;
+        srt_seen_count++;
       }
     }
 

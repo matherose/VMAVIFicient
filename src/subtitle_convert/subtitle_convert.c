@@ -181,7 +181,7 @@ static void pgs_ds_reset(PgsDisplaySet *ds) {
 /* ====================================================================== */
 
 static uint16_t read_be16(const uint8_t *p) {
-  return ((uint16_t)p[0] << 8) | p[1];
+  return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
 }
 
 /**
@@ -363,7 +363,7 @@ static void parse_pgs_packet(PgsDisplaySet *ds, const uint8_t *data, int data_si
  *   - 0x00 + 11LLLLLL LLLLLLLL + CC: L pixels of color CC (64-16383)
  */
 static uint8_t *decode_pgs_rle(const uint8_t *rle, size_t rle_size, int w, int h) {
-  uint8_t *bitmap = calloc(w * h, 1);
+  uint8_t *bitmap = calloc((size_t)w * (size_t)h, 1);
   if (!bitmap)
     return NULL;
 
@@ -510,7 +510,7 @@ static PIX *prepare_pix_for_ocr(PIX *src) {
 
   /* Otsu binarization: produces a clean 1bpp image that Tesseract
      handles much better than raw grayscale for glyph discrimination */
-  PIX *binary = pixOtsuThreshOnBackgroundNorm(padded, NULL, 10, 15, 100, 50, 255, 2, 2, 0.1, NULL);
+  PIX *binary = pixOtsuThreshOnBackgroundNorm(padded, NULL, 10, 15, 100, 50, 255, 2, 2, 0.1F, NULL);
   if (binary) {
     pixDestroy(&padded);
 

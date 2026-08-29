@@ -8,6 +8,15 @@
 # clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling is
 # OFF: it demands C11 Annex K *_s functions that do not exist on macOS or
 # glibc, so every fprintf/memcpy call would need a NOLINT.
+# bugprone-signed-bitwise is OFF: it arrived in llvm 23 (renamed from
+# hicpp-signed-bitwise) with 61 hits, none of them defects. All three
+# sources are unavoidable in C — FFmpeg declares its bitmasks as int, so
+# `oformat->flags & AVFMT_NOFILE` is signed by construction; hex literals
+# are signed ints, so `flags & 0xC0` trips it; and uint8_t promotes to int,
+# so `(nal[0] >> 1) & 0x3F` trips it too. Silencing them would mean adding
+# casts and u-suffixes throughout the Dolby Vision RPU NAL parser and the
+# PGS RLE decoder — bit manipulation our test media (SDR, no subtitle
+# tracks) cannot exercise. Not worth that risk for a stylistic check.
 
 Checks: >
   -*,
@@ -23,6 +32,7 @@ Checks: >
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-multi-level-implicit-pointer-conversion,
   -bugprone-assignment-in-if-condition,
+  -bugprone-signed-bitwise,
   -misc-include-cleaner,
   -readability-identifier-length,
   -readability-magic-numbers,

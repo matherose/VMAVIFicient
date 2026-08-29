@@ -296,9 +296,9 @@ StageStatus encode_pass(PipelineCtx *ctx, EncodePassParams *pass) {
           /* Skip user-supplied --srt files: they live outside ctx->output_dir
              or weren't created by us. Only remove SRTs we wrote into
              the output directory. */
-          if (strncmp(ctx->srt_paths[i], ctx->output_dir, strlen(ctx->output_dir)) == 0)
-            if (remove(ctx->srt_paths[i]) == 0)
-              removed++;
+          if (strncmp(ctx->srt_paths[i], ctx->output_dir, strlen(ctx->output_dir)) == 0 &&
+              remove(ctx->srt_paths[i]) == 0)
+            removed++;
         }
       }
       if (remove(av1_video_path) == 0)
