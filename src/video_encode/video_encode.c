@@ -20,6 +20,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/error.h>
+#include <libavutil/hdr_dynamic_metadata.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
 #include <libavutil/pixdesc.h>
@@ -217,6 +218,66 @@ static void copy_hdr_static_metadata(AVStream *out_stream, const AVStream *in_st
       break;
     }
   }
+}
+
+/* HDR10+ AV1 Metadata Handling Specification v1.0.1 s2.1: the ITU-T T.35
+   payload is prefixed with country code, provider code, provider oriented
+   code and application identifier. FFmpeg keeps these in the internal
+   libavcodec/itut35.h, so they are restated here. */
+#define VMAV_T35_COUNTRY_CODE_US 0xB5
+#define VMAV_T35_PROVIDER_CODE_SAMSUNG 0x003C
+#define VMAV_T35_PROVIDER_ORIENTED_CODE 0x0001
+#define VMAV_T35_APPLICATION_IDENTIFIER 0x04
+#define VMAV_T35_HEADER_SIZE 6
+
+/**
+ * @brief Carry HDR10+ dynamic metadata from a source frame to the encoder.
+ *
+ * SMPTE ST 2094-40 rides in an ITU-T T.35 payload — the same channel the
+ * Dolby Vision RPU uses, so it attaches through svt_add_metadata() too.
+ *
+ * av_dynamic_hdr_plus_to_t35() serialises the payload *without* the T.35
+ * header, so the six identifying bytes have to be written in front of it or
+ * the encoder emits nothing usable. libaom's add_hdr_plus() does the same
+ * thing; this mirrors it.
+ *
+ * Without this the metadata was detected and used to tag the release name
+ * while being dropped from the output, so an HDR10+ source produced a file
+ * labelled HDR10+ that no longer carried it.
+ */
+static void attach_hdr10plus(EbBufferHeaderType *buf, const AVFrame *frame) {
+  const AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DYNAMIC_HDR_PLUS);
+  if (!sd || sd->size < sizeof(AVDynamicHDRPlus))
+    return;
+
+  const AVDynamicHDRPlus *hdr_plus = (const AVDynamicHDRPlus *)sd->data;
+
+  /* Size probe first: passing NULL asks only for the payload length. */
+  size_t payload_size = 0;
+  if (av_dynamic_hdr_plus_to_t35(hdr_plus, NULL, &payload_size) < 0 || payload_size == 0)
+    return;
+
+  uint8_t *t35 = av_malloc(payload_size + VMAV_T35_HEADER_SIZE);
+  if (!t35)
+    return;
+
+  t35[0] = VMAV_T35_COUNTRY_CODE_US;
+  t35[1] = (VMAV_T35_PROVIDER_CODE_SAMSUNG >> 8) & 0xFF;
+  t35[2] = VMAV_T35_PROVIDER_CODE_SAMSUNG & 0xFF;
+  t35[3] = (VMAV_T35_PROVIDER_ORIENTED_CODE >> 8) & 0xFF;
+  t35[4] = VMAV_T35_PROVIDER_ORIENTED_CODE & 0xFF;
+  t35[5] = VMAV_T35_APPLICATION_IDENTIFIER;
+
+  uint8_t *payload = t35 + VMAV_T35_HEADER_SIZE;
+  if (av_dynamic_hdr_plus_to_t35(hdr_plus, &payload, &payload_size) < 0) {
+    av_free(t35);
+    return;
+  }
+
+  /* svt_add_metadata() copies, so the buffer is ours to release. */
+  (void)svt_add_metadata(buf, EB_AV1_METADATA_TYPE_ITUT_T35, t35,
+                         payload_size + VMAV_T35_HEADER_SIZE);
+  av_free(t35);
 }
 
 /* ====================================================================== */
@@ -652,6 +713,9 @@ VideoEncodeResult encode_video(const VideoEncodeConfig *config) {
         free(rpu_data);
       }
 
+      /* HDR10+ dynamic metadata rides the same T.35 channel as the RPU. */
+      attach_hdr10plus(&input_buf, frame);
+
       /* Send frame to encoder */
       ret = svt_av1_enc_send_picture(svt_handle, &input_buf);
 
@@ -792,6 +856,9 @@ VideoEncodeResult encode_video(const VideoEncodeConfig *config) {
       }
       free(rpu_data);
     }
+
+    /* HDR10+ dynamic metadata rides the same T.35 channel as the RPU. */
+    attach_hdr10plus(&input_buf, frame);
 
     svt_av1_enc_send_picture(svt_handle, &input_buf);
     /* SVT-AV1 takes ownership of metadata — do not free */
