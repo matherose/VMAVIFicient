@@ -43,11 +43,19 @@ jobs:
           deps-path: build/deps
           deps-cache-key: cmake-deps-static-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
 
+      # VMAV_GRAV1SYNTH_BIN_RUNTIME is load-bearing for a release build.
+      # Without it the absolute build path is compiled in, which on a runner
+      # means /Users/runner/work/... — a path that exists nowhere else. Every
+      # release up to and including v2.2.0 shipped that way, so grain
+      # analysis failed with ENOENT on every downloaded binary. A bare
+      # command name makes posix_spawnp fall back to PATH, which is why
+      # grav1synth is shipped beside it below.
       - name: Configure (vendored static)
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DVMAV_USE_SYSTEM_DEPS=OFF
+            -DVMAV_USE_SYSTEM_DEPS=OFF \
+            -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
 
       - name: Build
         run: cmake --build build -j$(sysctl -n hw.ncpu)
@@ -61,15 +69,40 @@ jobs:
       - name: Verify version banner
         run: ./build/vmavificient --help | head -1
 
-      # SHA256SUMS lives next to the binary in the GitHub release so
-      # downloaders can verify integrity with a single `shasum -c`.
-      - name: Package binary + checksums
+      # Component-scoped: a plain install also runs cJSON's rules, which
+      # write to an absolute prefix fixed at configure time and fail.
+      - name: Install to a staging tree
         run: |
+          cmake --install build --prefix "$GITHUB_WORKSPACE/stage" \
+            --component vmavificient
+          chmod +x "$GITHUB_WORKSPACE/stage/bin/"*
+          ls -l "$GITHUB_WORKSPACE/stage/bin/"
+
+      # Regression test for the bug this workflow shipped up to v2.2.0: if an
+      # absolute grav1synth path is baked in, the released binary cannot
+      # spawn it and grain analysis dies with ENOENT on every user machine.
+      - name: Verify grav1synth resolves via PATH
+        run: |
+          if strings stage/bin/vmavificient | grep -qE '/[^ ]*/grav1synth'; then
+            echo "::error::an absolute grav1synth path is compiled in — it will not exist on a user machine"
+            strings stage/bin/vmavificient | grep -E '/[^ ]*/grav1synth' | head -3
+            exit 1
+          fi
+          stage/bin/grav1synth --version
+          echo "grav1synth is shipped and resolved by name"
+
+      # Both binaries travel together: vmavificient spawns grav1synth by
+      # name, so it has to be on PATH. The bare binary is kept as a separate
+      # asset for packagers who already provide grav1synth themselves.
+      - name: Package archive + checksums
+        run: |
+          VERSION=$(sed -n 's/^project(vmavificient VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           mkdir -p dist
-          cp build/vmavificient dist/vmavificient-macos-arm64
+          tar -czf "dist/vmavificient-${VERSION}-macos-arm64.tar.gz" -C stage bin
+          cp stage/bin/vmavificient dist/vmavificient-macos-arm64
           chmod +x dist/vmavificient-macos-arm64
           cd dist
-          shasum -a 256 vmavificient-macos-arm64 > SHA256SUMS
+          shasum -a 256 vmavificient-* > SHA256SUMS
           cat SHA256SUMS
 
       - name: Create GitHub release
