@@ -24,7 +24,7 @@ StageStatus stage_audio(PipelineCtx *ctx) {
 
   /* Sort: French first, then English, then others */
   if (enc_best && enc_best_count > 1)
-    qsort(enc_best, enc_best_count, sizeof(TrackInfo), vmav_cmp_audio_order);
+    qsort(enc_best, (size_t)enc_best_count, sizeof(TrackInfo), vmav_cmp_audio_order);
 
   /* Store OPUS paths, track names and languages for final mux.
      All three are written through the opus_count write-index so a

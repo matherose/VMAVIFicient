@@ -190,7 +190,7 @@ CropInfo get_crop_info(const char *path) {
   int sample_count = 0;
 
   for (int s = 0; s < CROP_SAMPLES && sample_count < CROP_SAMPLES; s++) {
-    int64_t target = duration / 10 + (int64_t)(duration * 0.8 / CROP_SAMPLES) * s;
+    int64_t target = duration / 10 + (int64_t)((double)duration * 0.8 / CROP_SAMPLES) * s;
 
     av_seek_frame(fmt_ctx, -1, target, AVSEEK_FLAG_BACKWARD);
     avcodec_flush_buffers(dec_ctx);
@@ -247,10 +247,10 @@ CropInfo get_crop_info(const char *path) {
   }
 
   if (sample_count > 0) {
-    qsort(tops, sample_count, sizeof(int), cmp_int);
-    qsort(bottoms, sample_count, sizeof(int), cmp_int);
-    qsort(lefts, sample_count, sizeof(int), cmp_int);
-    qsort(rights, sample_count, sizeof(int), cmp_int);
+    qsort(tops, (size_t)sample_count, sizeof(int), cmp_int);
+    qsort(bottoms, (size_t)sample_count, sizeof(int), cmp_int);
+    qsort(lefts, (size_t)sample_count, sizeof(int), cmp_int);
+    qsort(rights, (size_t)sample_count, sizeof(int), cmp_int);
 
     int mid = sample_count / 2;
     info.top = tops[mid];
