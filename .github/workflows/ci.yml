@@ -413,7 +413,7 @@ jobs:
           path: dist
 
       - name: Install HDR tooling
-        run: brew install dovi_tool mkvtoolnix
+        run: brew install dovi_tool hdr10plus_tool mkvtoolnix
 
       - name: Synthesise HDR10 and Dolby Vision clips
         run: |
@@ -446,10 +446,38 @@ jobs:
           dovi_tool inject-rpu -i base.hevc --rpu-in rpu.bin -o dv.hevc
           mkvmerge -q -o dv.mkv --default-duration 0:30fps dv.hevc audio.ac3
 
+          # HDR10+: SMPTE ST 2094-40 injected as SEI, then muxed.
+          python3 - "$FRAMES" > hp.json <<'PYEOF'
+          import json, sys
+          n = int(sys.argv[1])
+          scene = lambda i: {
+              "SceneFrameIndex": i, "SceneId": 0, "SequenceFrameIndex": i,
+              "LuminanceParameters": {
+                  "AverageRGB": 1024,
+                  "LuminanceDistributions": {
+                      "DistributionIndex": [1, 5, 10, 25, 50, 75, 90, 95, 99],
+                      "DistributionValues": [0, 100, 200, 300, 400, 500, 600, 700, 800]},
+                  "MaxScl": [1000, 1000, 1000]},
+              "BezierCurveData": {
+                  "Anchors": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+                  "KneePointX": 100, "KneePointY": 100},
+              "NumberOfWindows": 1, "TargetedSystemDisplayMaximumLuminance": 400}
+          tool = {"Tool": "vmavificient-ci", "Version": "1.0"}
+          json.dump({"JSONInfo": {"HDR10plusProfile": "A", "Version": "1.0", "ToolInfo": tool},
+                     "ToolInfo": tool,
+                     "SceneInfo": [scene(i) for i in range(n)],
+                     "SceneInfoSummary": {"SceneFirstFrameIndex": [0],
+                                          "SceneFrameNumbers": [n]}},
+                    sys.stdout)
+          PYEOF
+          hdr10plus_tool inject -i base.hevc -j hp.json -o hp.hevc
+          mkvmerge -q -o hp.mkv --default-duration 0:30fps hp.hevc audio.ac3
+
           # --blind names the output from the input stem, so an .mkv input
           # would collide with its own output.
           cp hdr10.mkv hdr10src.mks
           cp dv.mkv dvsrc.mks
+          cp hp.mkv hpsrc.mks
 
       - name: Dolby Vision — detect, extract, re-attach
         timeout-minutes: 40
@@ -487,6 +515,26 @@ jobs:
           done
           echo "HDR10: detected, mastering display and content light preserved"
 
+      # HDR10+ was detected and used to tag the release name while being
+      # dropped from the output. av_dynamic_hdr_plus_to_t35() omits the T.35
+      # header, so attaching its payload unprefixed yields no usable
+      # metadata — this asserts the values actually survive.
+      - name: HDR10+ — dynamic metadata survives the encode
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          PATH="$GITHUB_WORKSPACE/dist/bin:$PATH" \
+            dist/bin/vmavificient --blind --crf 40 --verbose hpsrc.mks 2>&1 | tee hp-run.log
+
+          grep -qE 'HDR10\+ +yes' hp-run.log \
+            || { echo "::error::HDR10+ not detected on an HDR10+ source"; exit 1; }
+
+          ffprobe -v error -select_streams v:0 -read_intervals '%+#5' -show_frames \
+            -show_entries frame_side_data=side_data_type hpsrc.mkv 2>/dev/null \
+            | grep -qi '2094-40' \
+            || { echo "::error::HDR10+ metadata missing from the encoded output"; exit 1; }
+          echo "HDR10+: detected and passed through"
+
       - name: Summarise
         if: always()
         run: |
@@ -494,7 +542,7 @@ jobs:
             echo "### HDR10 / Dolby Vision"
             echo ""
             echo '```'
-            grep -hE 'HDR10 +|Dolby Vision +|RPUs' dv-run.log hdr10-run.log 2>/dev/null \
+            grep -hE 'HDR10 +|HDR10\+ +|Dolby Vision +|RPUs' dv-run.log hdr10-run.log hp-run.log 2>/dev/null \
               | sed 's/^ *//' | sort -u || echo "(no run output)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
