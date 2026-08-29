@@ -16,12 +16,33 @@ concurrency:
 permissions:
   contents: read
 
+# One job per stage, so a failure names itself in the run graph and can be
+# re-run on its own instead of repeating everything before it.
+#
+#   lint ─┬─ deps ─┬─ build ─┬─ unit-tests
+#         │        │         ├─ encode ── verify-encode
+#         │        │         └─ hdr-dv
+#         │        └─ clang-tidy
+#         ├─ system-deps
+#         └─ sanitizer
+#
+# The split is affordable because a vendored build links nothing outside the
+# macOS system libraries: `cmake --install` yields a tree (vmavificient +
+# grav1synth in bin/) that later jobs download and run directly — no
+# rebuild, no Homebrew, no dependency tree.
+#
+# system-deps stays a single job deliberately. That binary links Homebrew
+# dylibs, so any stage split off it would reinstall the whole brew set just
+# to run one command, costing minutes and proving nothing new.
+
 jobs:
-  # ── Lint: format + workflow files ─────────────────────────────────
+  # ── Stage 1: static checks ─────────────────────────────────────────
   # Cheap, runs on a tiny ubuntu image; fails fast on style drift so we
   # don't waste 30 minutes of macOS time before noticing.
   lint:
+    name: 1 · Lint (format + workflows)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -46,15 +67,165 @@ jobs:
       - name: Lint workflows
         run: ./actionlint -color
 
-  # ── Build + test (system deps) ─────────────────────────────────────
-  # Verifies the recommended build path (VMAV_USE_SYSTEM_DEPS=ON, the
-  # default since v1.1.0). Absorbs the old clang-tidy job (reuses this
-  # build's compile_commands.json instead of building twice) and the old
-  # encode-test job (runs the installed binary in-place instead of
-  # round-tripping an artifact).
-  build-test:
+  # ── Stage 2: dependencies ──────────────────────────────────────────
+  # Builds only the ExternalProject targets and leaves them in the cache
+  # for the stages that follow. Separate so a dependency failure — an
+  # upstream tag moving, a pinned SHA going stale, a host toolchain
+  # drifting under a vendored dep — reads as a dependency failure instead
+  # of being buried in a compile log.
+  deps:
+    name: 2 · Dependencies (vendored)
+    runs-on: macos-14
+    timeout-minutes: 120
+    needs: lint
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-build
+        with:
+          mode: vendored
+          deps-path: build/deps
+          deps-cache-key: cmake-deps-vendored-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DVMAV_USE_SYSTEM_DEPS=OFF \
+            -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
+
+      # Targets are discovered, not hardcoded, so adding or renaming an
+      # ExternalProject cannot silently stop building it here.
+      - name: Build dependency tree
+        run: |
+          # Array rather than a bare string: macOS runners ship bash 3.2,
+          # so no mapfile, and an unquoted expansion trips shellcheck.
+          EP=()
+          while IFS= read -r target; do
+            EP+=("$target")
+          done < <(ninja -C build -t targets all | grep -oE '^ep_[a-z0-9_]+' | sort -u)
+
+          [ ${#EP[@]} -gt 0 ] || { echo "::error::no ep_* targets found"; exit 1; }
+          echo "Dependency targets:"
+          printf '  %s\n' "${EP[@]}"
+          cmake --build build --target "${EP[@]}" -j"$(sysctl -n hw.ncpu)"
+
+      - name: Report pinned versions
+        if: always()
+        run: |
+          {
+            echo "### Vendored dependency pins"
+            echo ""
+            echo "| Dependency | Version |"
+            echo "|---|---|"
+            grep -oE '^ *set\([A-Z0-9_]+_GIT_(TAG|REV) +"[0-9a-f]{40}"\) *# *.*' CMakeLists.txt \
+              | sed -E 's/^ *set\(([A-Z0-9_]+)_GIT_(TAG|REV).*# *(.*)$/| \1 | \3 |/'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 3: compile + package ─────────────────────────────────────
+  # Restores the dependency cache and compiles only our sources, then
+  # installs to a prefix. That install tree is the artifact every later
+  # stage consumes, which also means the packaging path is exercised on
+  # every run instead of only at release time.
+  build:
+    name: 3 · Build + package
     runs-on: macos-14
     timeout-minutes: 90
+    needs: deps
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-build
+        with:
+          mode: vendored
+          deps-path: build/deps
+          deps-cache-key: cmake-deps-vendored-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DVMAV_USE_SYSTEM_DEPS=OFF \
+            -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
+
+      - name: Build
+        run: cmake --build build -j"$(sysctl -n hw.ncpu)"
+
+      # --component so only our two binaries are installed. A plain install
+      # would also run cJSON's rules, which write to an absolute prefix
+      # baked in at configure time and fail on /usr/local.
+      - name: Install to prefix
+        run: |
+          cmake --install build --prefix "$GITHUB_WORKSPACE/dist" \
+            --component vmavificient
+          cp build/vmav_tests "$GITHUB_WORKSPACE/dist/bin/"
+          chmod +x "$GITHUB_WORKSPACE/dist/bin/"*
+
+      # If this ever fails, the artifact is no longer portable and every
+      # downstream stage would need the toolchain back.
+      - name: Verify the tree is self-contained
+        run: |
+          if otool -L dist/bin/vmavificient | tail -n +2 \
+               | grep -vE '/usr/lib/|/System/Library/'; then
+            echo "::error::vmavificient links a library outside the system set"
+            exit 1
+          fi
+          echo "dist/bin/vmavificient links only macOS system libraries"
+
+      - name: Verify version banner
+        run: ./dist/bin/vmavificient --help | head -1
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vmavificient-dist
+          path: dist/
+          retention-days: 7
+
+      - name: Report build
+        if: always()
+        run: |
+          {
+            echo "### Build"
+            echo ""
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| vmavificient | $(du -h dist/bin/vmavificient | cut -f1) |"
+            echo "| grav1synth | $(du -h dist/bin/grav1synth | cut -f1) |"
+            echo "| FFmpeg | $(strings dist/bin/vmavificient | grep -oE 'Lavf[0-9]+\.[0-9.]+' | sort -u | head -1) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 4a: unit tests ───────────────────────────────────────────
+  unit-tests:
+    name: 4a · Unit tests
+    runs-on: macos-14
+    timeout-minutes: 15
+    needs: build
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vmavificient-dist
+          path: dist
+
+      - name: Run unit tests
+        run: |
+          chmod +x dist/bin/vmav_tests
+          ./dist/bin/vmav_tests
+
+  # ── Stage 4b: static analysis ──────────────────────────────────────
+  # Zero-findings policy (.clang-tidy, WarningsAsErrors) enforced over the
+  # whole tree — pre-commit only checks changed files.
+  #
+  # System mode, not vendored: llvm@22 (which provides run-clang-tidy) is
+  # only in the system brew list, and analysing the same compile database
+  # the tool has always seen avoids a needless change in what gets
+  # reported. Only needs a configure, so it hangs off lint and runs in
+  # parallel with the vendored chain rather than waiting on deps.
+  clang-tidy:
+    name: 4b · clang-tidy (full tree)
+    runs-on: macos-14
+    timeout-minutes: 60
     needs: lint
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,10 +234,9 @@ jobs:
         with:
           mode: system
           deps-path: build/deps
-          deps-cache-key: cmake-deps-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
-          test-media: 'true'
+          deps-cache-key: cmake-deps-tidy-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
 
-      - name: Configure (system deps, compile commands)
+      - name: Configure (compile commands)
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -74,17 +244,14 @@ jobs:
             -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
             -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
 
-      - name: Build
-        run: cmake --build build -j$(sysctl -n hw.ncpu)
+      # SVT-AV1-HDR and libhdr10plus stay vendored even in system mode, so
+      # EbSvtAv1*.h and libhdr10plus-rs/hdr10plus.h only exist once those
+      # ExternalProjects have been built. Analysing before that leaves the
+      # translation units malformed, and clang-tidy then reports a cascade
+      # of bogus findings on top of the missing-header errors.
+      - name: Build (materialise vendored headers)
+        run: cmake --build build --target ep_svtav1 ep_libhdr10plus -j"$(sysctl -n hw.ncpu)"
 
-      - name: Run unit tests
-        run: ./build/vmav_tests
-
-      - name: Verify version banner
-        run: ./build/vmavificient --help | head -1
-
-      # Zero-findings policy (.clang-tidy, WarningsAsErrors) enforced over
-      # the whole tree — pre-commit only checks changed files.
       # run-clang-tidy resolves the clang-tidy binary via $PATH, not
       # relative to itself, and brew keeps llvm/bin off PATH — pass it
       # explicitly or the wrapper dies with "failed to find clang-tidy".
@@ -96,28 +263,282 @@ jobs:
             -p build -quiet \
             $(find src -name '*.c')
 
-      # Install to a prefix and run from there: verifies the packaging
-      # path works — binary + grav1synth side-by-side in bin/.
-      - name: Install (packaging check)
-        run: |
-          cmake --install build --prefix "$GITHUB_WORKSPACE/dist"
-          chmod +x "$GITHUB_WORKSPACE/dist/bin/vmavificient"
+  # ── Stage 5: encode ────────────────────────────────────────────────
+  # Runs the installed binary against the Big Buck Bunny sample and hands
+  # the result to verify-encode. Fixed CRF rather than a bitrate target,
+  # so the output is reproducible and the assertions can be exact.
+  encode:
+    name: 5 · Encode (Big Buck Bunny)
+    runs-on: macos-14
+    timeout-minutes: 60
+    needs: build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Still a smoke test, not a quality gate.
-      - name: Smoke encode (installed binary)
-        timeout-minutes: 15
+      - uses: ./.github/actions/setup-build
+        with:
+          mode: media
+          test-media: 'true'
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vmavificient-dist
+          path: dist
+
+      - name: Encode
+        timeout-minutes: 45
         run: |
+          chmod +x dist/bin/*
           PATH="$GITHUB_WORKSPACE/dist/bin:$PATH" \
-            dist/bin/vmavificient --blind --bitrate 2000 sample.mp4
+            dist/bin/vmavificient --blind --crf 36 --verbose sample.mp4
 
-      - name: Verify output
+      - name: Collect output
         run: |
-          OUTPUT=$(find . -maxdepth 1 -name '*.mkv' -print -quit)
-          [ -n "$OUTPUT" ] || { echo "::error::no MKV produced"; exit 1; }
-          echo "Output: $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+          [ -f sample.mkv ] || { echo "::error::no MKV produced"; exit 1; }
+          mkdir -p encoded && mv sample.mkv encoded/
 
-  # ── Sanitizer build (ASAN/UBSAN, vendored) ─────────────────────────
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encoded-output
+          path: encoded/
+          retention-days: 7
+
+  # ── Stage 6: verify the encode ─────────────────────────────────────
+  # The previous check only asserted that some .mkv existed, which passes
+  # on a truncated file, a silent audio track, an 8-bit encode, or the
+  # single-keyframe unseekable output the v1.5.0 defect produced. These
+  # assertions are the ones that defect would have failed.
+  verify-encode:
+    name: 6 · Verify encoded file
+    runs-on: macos-14
+    timeout-minutes: 20
+    needs: encode
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: encoded-output
+          path: encoded
+
+      - name: Install ffprobe
+        run: brew install ffmpeg
+
+      - name: Assert stream layout
+        run: |
+          OUT=encoded/sample.mkv
+          probe() {
+            ffprobe -v error -select_streams "$1" -show_entries stream="$2" \
+              -of csv=p=0 "$OUT" | head -1
+          }
+          VCODEC=$(probe v:0 codec_name)
+          PIXFMT=$(probe v:0 pix_fmt)
+          ACODEC=$(probe a:0 codec_name)
+          echo "video=$VCODEC pix_fmt=$PIXFMT audio=$ACODEC"
+
+          [ "$VCODEC" = "av1" ] || { echo "::error::expected av1, got '$VCODEC'"; exit 1; }
+          [ "$PIXFMT" = "yuv420p10le" ] || { echo "::error::expected 10-bit, got '$PIXFMT'"; exit 1; }
+          [ "$ACODEC" = "opus" ] || { echo "::error::expected opus, got '$ACODEC'"; exit 1; }
+
+      # A closed GOP is what makes the file seekable; v1.5.0 shipped
+      # open-GOP single-keyframe output for a month without anyone noticing.
+      - name: Assert keyframes (seekability)
+        run: |
+          OUT=encoded/sample.mkv
+          ffprobe -v error -select_streams v:0 -show_entries frame=key_frame \
+            -of csv=p=0 "$OUT" > kf.txt
+          KF=$(grep -c '^1' kf.txt)
+          TOTAL=$(wc -l < kf.txt | tr -d ' ')
+          echo "keyframes=$KF total_frames=$TOTAL"
+
+          [ "$KF" -ge 1 ] || { echo "::error::no keyframes at all"; exit 1; }
+          if [ "$TOTAL" -gt 240 ] && [ "$KF" -lt 2 ]; then
+            echo "::error::$TOTAL frames but only $KF keyframe — output is not seekable"
+            exit 1
+          fi
+
+      - name: Assert audio is present and not silent
+        run: |
+          OUT=encoded/sample.mkv
+          ffmpeg -hide_banner -i "$OUT" -map 0:a:0 -af volumedetect -f null - 2>&1 > /dev/null \
+            | tee vol.txt
+          SAMPLES=$(grep -oE 'n_samples: [0-9]+' vol.txt | tail -1 | grep -oE '[0-9]+')
+          MEAN=$(grep -oE 'mean_volume: -?[0-9.]+' vol.txt | tail -1 | grep -oE '\-?[0-9.]+')
+          echo "n_samples=$SAMPLES mean_volume=${MEAN} dB"
+
+          if [ -z "$SAMPLES" ] || [ "$SAMPLES" -eq 0 ]; then
+            echo "::error::output has no audio samples"
+            exit 1
+          fi
+          # A digitally silent track reports -91 dB or lower.
+          SILENT=$(awk -v m="$MEAN" 'BEGIN { print (m <= -90) ? 1 : 0 }')
+          [ "$SILENT" = "0" ] || { echo "::error::audio track is silent ($MEAN dB)"; exit 1; }
+
+      - name: Summarise
+        if: always()
+        run: |
+          OUT=encoded/sample.mkv
+          {
+            echo "### Encoded output"
+            echo ""
+            echo "| Property | Value |"
+            echo "|---|---|"
+            echo "| Size | $(du -h "$OUT" | cut -f1) |"
+            echo "| Duration | $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT") s |"
+            echo "| Video | $(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt -of csv=p=0 "$OUT") |"
+            echo "| Audio | $(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name,channels,sample_rate -of csv=p=0 "$OUT") |"
+            echo "| Keyframes | $(grep -c '^1' kf.txt) of $(wc -l < kf.txt | tr -d ' ') frames |"
+            echo "| Video stream MD5 | $(ffmpeg -v error -i "$OUT" -map 0:v:0 -c copy -f md5 - | sed 's/MD5=//') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 7: HDR10 / Dolby Vision ──────────────────────────────────
+  # The regular sample is SDR with no subtitle tracks, so CI never reached
+  # HDR detection, RPU extraction or metadata passthrough. Synthesise the
+  # content instead: x265 for a PQ/BT.2020 base, dovi_tool for a profile
+  # 8.1 RPU, mkvmerge for the container metadata.
+  hdr-dv:
+    name: 7 · HDR10 / Dolby Vision
+    runs-on: macos-14
+    timeout-minutes: 90
+    needs: build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-build
+        with:
+          mode: media
+          test-media: 'true'
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vmavificient-dist
+          path: dist
+
+      - name: Install HDR tooling
+        run: brew install dovi_tool mkvtoolnix
+
+      - name: Synthesise HDR10 and Dolby Vision clips
+        run: |
+          set -euo pipefail
+          ffmpeg -y -v error -t 4 -i sample.mp4 -an \
+            -c:v libx265 -preset ultrafast -crf 30 -pix_fmt yuv420p10le \
+            -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc \
+            -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400:hdr10=1:repeat-headers=1" \
+            -f hevc base.hevc
+          ffmpeg -y -v error -t 4 -i sample.mp4 -map 0:a:0 -c copy audio.ac3
+
+          FRAMES=$(ffprobe -v error -count_frames -select_streams v:0 \
+                     -show_entries stream=nb_read_frames -of csv=p=0 base.hevc)
+          echo "frames: $FRAMES"
+
+          # HDR10: the Matroska Colour element is what the encoder reads
+          # back as coded side data, so it has to be set on the container.
+          mkvmerge -q -o hdr10.mkv --default-duration 0:30fps \
+            --colour-matrix 0:9 --colour-transfer-characteristics 0:16 --colour-primaries 0:9 \
+            --chromaticity-coordinates 0:0.680,0.320,0.265,0.690,0.150,0.060 \
+            --white-colour-coordinates 0:0.3127,0.3290 \
+            --max-luminance 0:1000 --min-luminance 0:0.0001 \
+            --max-content-light 0:1000 --max-frame-light 0:400 \
+            base.hevc audio.ac3
+
+          # Dolby Vision profile 8.1, interleaved as UNSPEC62 NALs.
+          printf '{"cm_version":"V29","profile":"8.1","length":%s,"level6":{"max_display_mastering_luminance":1000,"min_display_mastering_luminance":1,"max_content_light_level":1000,"max_frame_average_light_level":400}}' \
+            "$FRAMES" > dv.json
+          dovi_tool generate -j dv.json -o rpu.bin
+          dovi_tool inject-rpu -i base.hevc --rpu-in rpu.bin -o dv.hevc
+          mkvmerge -q -o dv.mkv --default-duration 0:30fps dv.hevc audio.ac3
+
+          # --blind names the output from the input stem, so an .mkv input
+          # would collide with its own output.
+          cp hdr10.mkv hdr10src.mks
+          cp dv.mkv dvsrc.mks
+
+      - name: Dolby Vision — detect, extract, re-attach
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          chmod +x dist/bin/*
+          PATH="$GITHUB_WORKSPACE/dist/bin:$PATH" \
+            dist/bin/vmavificient --blind --crf 40 --verbose dvsrc.mks 2>&1 | tee dv-run.log
+
+          grep -qE 'Dolby Vision +yes' dv-run.log \
+            || { echo "::error::Dolby Vision not detected on a DV source"; exit 1; }
+          grep -qE '[0-9]+ RPUs' dv-run.log \
+            || { echo "::error::no RPUs extracted from the DV source"; exit 1; }
+
+          # The RPU has to survive re-attachment as T.35 OBUs on the output.
+          ffprobe -v error -select_streams v:0 -read_intervals '%+#5' -show_frames \
+            -show_entries frame_side_data=side_data_type dvsrc.mkv 2>/dev/null \
+            | grep -qi 'Dolby Vision' \
+            || { echo "::error::Dolby Vision metadata missing from the encoded output"; exit 1; }
+          echo "Dolby Vision: detected, extracted, re-attached"
+
+      - name: HDR10 — static metadata survives the encode
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          PATH="$GITHUB_WORKSPACE/dist/bin:$PATH" \
+            dist/bin/vmavificient --blind --crf 40 --verbose hdr10src.mks 2>&1 | tee hdr10-run.log
+
+          grep -qE 'HDR10 +yes' hdr10-run.log \
+            || { echo "::error::HDR10 not detected on a PQ source"; exit 1; }
+
+          for field in "Maximum content light" "Maximum frame light" "Maximum luminance"; do
+            mkvinfo hdr10src.mkv | grep -qi "$field" \
+              || { echo "::error::'$field' missing from the output Colour element"; exit 1; }
+          done
+          echo "HDR10: detected, mastering display and content light preserved"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### HDR10 / Dolby Vision"
+            echo ""
+            echo '```'
+            grep -hE 'HDR10 +|Dolby Vision +|RPUs' dv-run.log hdr10-run.log 2>/dev/null \
+              | sed 's/^ *//' | sort -u || echo "(no run output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── System-deps compatibility ──────────────────────────────────────
+  # VMAV_USE_SYSTEM_DEPS=ON is the default and the documented path, so it
+  # has to keep building. One job on purpose: this binary links Homebrew
+  # dylibs, so splitting stages off it would reinstall the whole brew set
+  # to run a single command.
+  system-deps:
+    name: 8 · System deps (compatibility)
+    runs-on: macos-14
+    timeout-minutes: 60
+    needs: lint
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-build
+        with:
+          mode: system
+          deps-path: build-sys/deps
+          deps-cache-key: cmake-deps-system-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build-sys \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth
+
+      - name: Build
+        run: cmake --build build-sys -j"$(sysctl -n hw.ncpu)"
+
+      - name: Run unit tests
+        run: ./build-sys/vmav_tests
+
+      - name: Verify version banner
+        run: ./build-sys/vmavificient --help | head -1
+
+  # ── Sanitizer ──────────────────────────────────────────────────────
+  # Debug + ASan/UBSan over the vendored tree. Independent of the release
+  # pipeline because it is a different build entirely — nothing to reuse.
   sanitizer:
+    name: 9 · Sanitizer (ASan + UBSan)
     runs-on: macos-14
     timeout-minutes: 120
     needs: lint
@@ -131,17 +552,17 @@ jobs:
           deps-cache-key: cmake-deps-asan-macos-arm64-${{ hashFiles('CMakeLists.txt') }}
           test-media: 'true'
 
-      - name: Configure (sanitizer + vendored)
+      - name: Configure
         run: |
           cmake -G Ninja -B build-asan \
             -DCMAKE_BUILD_TYPE=Debug \
             -DVMAV_USE_SYSTEM_DEPS=OFF \
             -DVMAV_SANITIZE=ON
 
-      - name: Build (sanitizer)
-        run: cmake --build build-asan -j$(sysctl -n hw.ncpu)
+      - name: Build
+        run: cmake --build build-asan -j"$(sysctl -n hw.ncpu)"
 
-      - name: Run unit tests (sanitizer)
+      - name: Run unit tests
         env:
           ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -151,7 +572,7 @@ jobs:
       # detect_leaks=0 because libdovi/libhdr10plus's Rust runtime hangs
       # on tiny static allocations the loader doesn't reclaim — false
       # positives, not real leaks.
-      - name: Test encode (sanitizer)
+      - name: Test encode
         env:
           ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -160,5 +581,5 @@ jobs:
 
 # Linux CI is deferred until the dep surface is in a stable distro most
 # users actually run (libdovi-dev only landed in Debian trixie / Ubuntu
-# 25.04+). When we revisit, mirror build-test on ubuntu-latest with
+# 25.04+). When we revisit, mirror system-deps on ubuntu-latest with
 # apt-installed -dev packages.

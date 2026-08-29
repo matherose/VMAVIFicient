@@ -1138,11 +1138,18 @@ endif()
 # -DVMAV_GRAV1SYNTH_BIN_RUNTIME=grav1synth, vmavificient does a PATH
 # lookup and finds it there.
 include(GNUInstallDirs)
+# Both rules carry a component so `cmake --install --component vmavificient`
+# installs exactly our two binaries. Without it, a vendored-mode install
+# also runs cJSON's rules, and those use CMAKE_INSTALL_FULL_INCLUDEDIR —
+# an absolute path baked in at configure time that --prefix cannot
+# redirect — so the install dies trying to write /usr/local/include/cjson.
 install(TARGETS vmavificient
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT vmavificient
 )
 install(PROGRAMS "${GRAV1SYNTH_BIN}"
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT vmavificient
 )
 
 # ===========================================================================
