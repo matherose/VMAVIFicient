@@ -128,6 +128,8 @@ StageStatus encode_pass(PipelineCtx *ctx, EncodePassParams *pass) {
 
     ui_section("Dolby Vision RPU");
     time_t rpu_t0 = time(NULL);
+    if (ctx->opt.force)
+      (void)remove(ctx->rpu_path);
     RpuExtractResult rpu_res = extract_rpu(filepath, ctx->rpu_path);
 
     if (rpu_res.skipped) {
@@ -176,6 +178,12 @@ StageStatus encode_pass(PipelineCtx *ctx, EncodePassParams *pass) {
         .scale_width = pass->scale_width,
         .scale_height = pass->scale_height,
     };
+
+    /* --force: drop the artifact so the stage's own "already exists"
+       check misses and the work is redone. Reusing a leftover file
+       silently hides the effect of a rebuilt binary or changed settings. */
+    if (ctx->opt.force)
+      (void)remove(av1_video_path);
 
     vr = encode_video(&vcfg);
 
@@ -261,6 +269,8 @@ StageStatus encode_pass(PipelineCtx *ctx, EncodePassParams *pass) {
       ui_stage_fail(pass->output_name, "video encode failed — mux skipped");
       ctx->pipeline_failed = 1;
     } else {
+      if (ctx->opt.force)
+        (void)remove(final_path);
       mr = final_mux(&mux_cfg);
 
       if (mr.skipped) {

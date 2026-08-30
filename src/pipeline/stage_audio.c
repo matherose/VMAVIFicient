@@ -72,6 +72,8 @@ StageStatus stage_audio(PipelineCtx *ctx) {
              (long long)(enc_best[i].bitrate / 1000), ctx->audio_names[ctx->opus_count]);
 
       time_t track_t0 = time(NULL);
+      if (ctx->opt.force)
+        (void)remove(ctx->opus_paths[ctx->opus_count]);
       OpusEncodeResult r =
           encode_track_to_opus(filepath, &enc_best[i], ctx->opus_paths[ctx->opus_count]);
 

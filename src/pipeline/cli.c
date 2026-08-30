@@ -40,6 +40,9 @@ void vmav_print_usage(const char *prog) {
                 "                   (default: per-preset, 90–96)\n"
                 "  --bitrate <kbps> Skip CRF search; encode VBR at this bitrate\n"
                 "  --srt <path>     Additional SRT subtitle file (can be repeated)\n"
+                "  --force          Redo stages whose output already exists. Without\n"
+                "                   it a leftover file is reused, which silently hides\n"
+                "                   the effect of a changed binary or settings\n"
                 "  --dry-run        Run analysis + CRF search + naming, print the\n"
                 "                   encoding plan, then exit. No files written.\n"
                 "  --quiet          Compact output: hide informational sections, keep\n"
@@ -192,6 +195,7 @@ int vmav_cli_parse(int argc, char *argv[], VmavOptions *opt) {
     OPT_MV = 300,
     OPT_SEASON = 301,
     OPT_EPISODE = 302,
+    OPT_FORCE = 303,
   };
 
   static struct option long_options[] = {
@@ -204,6 +208,7 @@ int vmav_cli_parse(int argc, char *argv[], VmavOptions *opt) {
       {"blind", no_argument, 0, OPT_BLIND},
       {"config", no_argument, 0, OPT_CONFIG_SETUP},
       {"dry-run", no_argument, 0, OPT_DRY_RUN},
+      {"force", no_argument, 0, OPT_FORCE},
       {"quiet", no_argument, 0, OPT_QUIET},
       {"verbose", no_argument, 0, OPT_VERBOSE},
       {"grain-only", no_argument, 0, OPT_GRAIN_ONLY},
@@ -298,6 +303,9 @@ int vmav_cli_parse(int argc, char *argv[], VmavOptions *opt) {
       return config_interactive_setup();
     case OPT_DRY_RUN:
       opt->dry_run = true;
+      break;
+    case OPT_FORCE:
+      opt->force = true;
       break;
     case OPT_QUIET:
       opt->quiet = true;

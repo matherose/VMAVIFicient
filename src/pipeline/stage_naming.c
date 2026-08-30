@@ -6,12 +6,29 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "media_naming.h"
 #include "media_tracks.h"
 #include "pipeline.h"
 #include "tmdb.h"
 #include "ui.h"
+
+/**
+ * @brief Do two paths name the same file on disk?
+ *
+ * Compared by device and inode rather than by string, so "./a.mkv" and
+ * "a.mkv", a symlink and its target, and relative versus absolute spellings
+ * all resolve correctly. A path that does not exist cannot collide, so a
+ * failed stat answers false.
+ */
+static bool same_file(const char *a, const char *b) {
+  struct stat sa;
+  struct stat sb;
+  if (stat(a, &sa) != 0 || stat(b, &sb) != 0)
+    return false;
+  return (bool)(sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino);
+}
 
 /**
  * @brief Prompt user to choose a language tag interactively.
@@ -189,6 +206,21 @@ StageStatus stage_naming(PipelineCtx *ctx) {
       *(slash + 1) = '\0';
     else
       snprintf(ctx->output_dir, sizeof(ctx->output_dir), "./");
+
+    /* `<stem>.mkv` next to the source collides with the source itself when
+       the input is already a .mkv. Every later stage then sees its output
+       "already exists" and skips, so the run finishes reporting success
+       while writing nothing — the input is left untouched and no encode
+       happens. Fail here instead of silently doing nothing. */
+    char blind_out[sizeof(ctx->output_dir) + sizeof(ctx->output_name)];
+    snprintf(blind_out, sizeof(blind_out), "%s%s", ctx->output_dir, ctx->output_name);
+    if (same_file(blind_out, filepath)) {
+      ui_stage_fail("Naming", "--blind output would overwrite the input");
+      ui_hint("--blind names the output <input-stem>.mkv beside the source, "
+              "which collides when the input is itself a .mkv — rename the "
+              "input, move it, or use --tmdb <id> to name the release");
+      return STAGE_EXIT_FAIL;
+    }
 
     if (ctx->tracks.error == 0 && ctx->tracks.audio_count > 0 && ctx->tracks.audio[0].language[0])
       ctx->video_language = ctx->tracks.audio[0].language;
