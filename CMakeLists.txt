@@ -33,7 +33,7 @@ endif()
 
 # C++ is enabled purely so CMake picks the C++ driver when linking the final
 # executable (tesseract is C++ and drags in libc++/libstdc++).
-project(vmavificient VERSION 2.2.1 LANGUAGES C CXX)
+project(vmavificient VERSION 2.3.0 LANGUAGES C CXX)
 
 # Enforce Ninja generator for the top-level build.
 if(NOT CMAKE_GENERATOR STREQUAL "Ninja")
