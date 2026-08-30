@@ -27,7 +27,7 @@ static bool same_file(const char *a, const char *b) {
   struct stat sb;
   if (stat(a, &sa) != 0 || stat(b, &sb) != 0)
     return false;
-  return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+  return (bool)(sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino);
 }
 
 /**

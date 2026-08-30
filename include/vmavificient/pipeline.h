@@ -35,6 +35,7 @@ typedef struct {
   int vmaf_target; /* 0 = per-preset default */
   bool blind;
   bool dry_run;
+  bool force; /* redo stages whose output already exists */
   bool quiet;
   bool verbose;
   bool grain_only;
